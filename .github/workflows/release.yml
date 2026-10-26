@@ -1,0 +1,268 @@
+# Automated release, driven by a marker at the START of a commit subject on master.
+# Rules and diagram: development/docs/08-release.md. Version maths: scripts/release-version.mjs.
+#
+#   !alpha  (nothing released) -> 0.0.1-alpha.1     !fix    1.4.2 -> 1.4.3
+#   !alpha  0.0.1-alpha.1      -> 0.0.1-alpha.2     !feat   1.4.2 -> 1.5.0
+#   !beta   0.0.1-alpha.3      -> 0.0.1-beta.1      !major  1.4.2 -> 2.0.0
+#   !stable 0.0.1-beta.2       -> 0.0.1             !patch  rebuild the released version in place
+#
+# Two steps:
+#   1. A marker on master opens a release PR: version bumped, CHANGELOG entry written. Nothing is built.
+#   2. Merging that PR releases: AppImage, deb and rpm are built, then the tag and the GitHub Release.
+#
+# Nothing is named until every bundle exists, so a release that fails part-way leaves no tag and no
+# Release. Run the workflow by hand with mode `release` to retry it.
+
+name: Release
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'pr = open the release PR; release = build and publish the version master carries; patch = rebuild that version in place'
+        required: true
+        default: pr
+        type: choice
+        options: [pr, release, patch]
+      marker:
+        description: 'Release type (pr mode only)'
+        default: alpha
+        type: choice
+        options: [alpha, beta, stable, fix, feat, major]
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write # delete the build artifacts once they are published
+
+# Never two at once: the second would compute its version from a state the first is changing.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-latest
+    outputs:
+      mode: ${{ steps.plan.outputs.mode }}
+      marker: ${{ steps.plan.outputs.marker }}
+      version: ${{ steps.plan.outputs.version }}
+      previous: ${{ steps.plan.outputs.previous }}
+      channel: ${{ steps.plan.outputs.channel }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/release-version.mjs --check
+
+      - name: Plan
+        id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          MODE: ${{ inputs.mode }}
+          MARKER: ${{ inputs.marker }}
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          current="$(node -p "require('./app/package.json').version")"
+          # The last release, or 0.0.0 when there is none: the first !alpha is then 0.0.1-alpha.1.
+          previous="$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)"
+          previous="${previous#v}"
+
+          # Every subject pushed, not just the head commit.
+          if [ "$EVENT" = workflow_dispatch ]; then
+            echo "!$([ "$MODE" = patch ] && echo patch || echo "$MARKER") : manual" > subjects.txt
+          elif [ -n "$(echo "$BEFORE_SHA" | tr -d 0)" ] && git cat-file -e "$BEFORE_SHA^{commit}" 2>/dev/null; then
+            git log "$BEFORE_SHA..$GITHUB_SHA" --format=%s > subjects.txt
+          else
+            git log -1 --format=%s > subjects.txt
+          fi
+          cat subjects.txt
+          plan="$(node scripts/release-version.mjs --current "${previous:-0.0.0}" --subjects-file subjects.txt)"
+          field() { printf '%s\n' "$plan" | sed -n "s/^$1=//p"; }
+
+          if [ "$EVENT" = workflow_dispatch ] && [ "$MODE" = release ]; then
+            mode=release
+          elif [ "$EVENT" = push ] && [ "$(git show HEAD^:app/package.json | node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).version")" != "$current" ]; then
+            mode=release # the release PR was merged
+          elif [ "$(field marker)" = patch ]; then
+            mode=patch
+          elif [ "$(field release)" = true ]; then
+            mode=pr
+          else
+            mode=none
+          fi
+
+          case "$mode" in
+            pr) version="$(field version)" ;;
+            release) version="$current" ;;
+            patch)
+              version="$previous"
+              [ -n "$previous" ] || { echo "::error::Nothing has been released yet; !patch has nothing to rebuild."; exit 1; }
+              [ "$previous" = "$current" ] || { echo "::error::master carries $current but the last release is $previous."; exit 1; } ;;
+          esac
+          case "${version:-}" in
+            *-alpha.*) channel=alpha ;;
+            *-beta.*) channel=beta ;;
+            *) channel=latest ;;
+          esac
+          {
+            echo "mode=$mode"
+            echo "marker=$(field marker)"
+            echo "version=${version:-}"
+            echo "previous=$previous"
+            echo "channel=$channel"
+          } | tee -a "$GITHUB_OUTPUT"
+
+  # --- Step 1: the release PR ------------------------------------------------
+
+  release-pr:
+    name: Release PR for v${{ needs.plan.outputs.version }}
+    needs: plan
+    if: needs.plan.outputs.mode == 'pr'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Bump the version
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: node scripts/set-version.mjs "$VERSION"
+
+      - name: Write the CHANGELOG entry
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+          PREVIOUS: ${{ needs.plan.outputs.previous }}
+        run: |
+          {
+            echo "## v${VERSION} ($(date -u +%Y-%m-%d))"
+            echo
+            git log ${PREVIOUS:+"v${PREVIOUS}..HEAD"} --no-merges --format='- %s' | grep -v '^- chore(release)' || true
+            echo
+            cat CHANGELOG.md 2>/dev/null || true
+          } > CHANGELOG.next.md
+          mv CHANGELOG.next.md CHANGELOG.md
+
+      - name: Open or update the release PR
+        id: pr
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          commit-message: 'chore(release): v${{ needs.plan.outputs.version }}'
+          title: 'chore(release): v${{ needs.plan.outputs.version }}'
+          body: |
+            Automated release PR, opened by a `!${{ needs.plan.outputs.marker }}` marker on master.
+
+            | | |
+            | --- | --- |
+            | From | `${{ needs.plan.outputs.previous || 'nothing released yet' }}` |
+            | To | `${{ needs.plan.outputs.version }}` |
+
+            The CHANGELOG diff is the release note; edit it in this branch if it reads badly.
+
+            **Merging this PR is what releases.** Closing it releases nothing.
+          branch: chore/release-v${{ needs.plan.outputs.version }}
+          base: master
+          delete-branch: true
+
+      - name: Ensure the PR exists
+        if: steps.pr.outputs.pull-request-number == ''
+        run: |
+          echo "::error::No release PR was created. Allow GitHub Actions to create pull requests (Settings > Actions > General) or add a RELEASE_TOKEN secret."
+          exit 1
+
+      - run: echo "Release PR ${{ steps.pr.outputs.pull-request-url }}" >> "$GITHUB_STEP_SUMMARY"
+
+  # --- Step 2: merging that PR is the release --------------------------------
+
+  build:
+    name: Linux bundles
+    needs: plan
+    if: contains(fromJSON('["release","patch"]'), needs.plan.outputs.mode)
+    # The oldest runner still supported: an AppImage built here runs on more distros.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: System libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev build-essential patchelf rpm xdg-utils
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri
+      # Not pnpm/action-setup: the repository pins the pnpm major in the lockfile.
+      - run: npm install -g pnpm@12
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+      - run: pnpm tauri build --bundles deb,rpm,appimage
+        env:
+          NO_STRIP: 'true' # linuxdeploy's strip fails on newer system libraries
+      - name: Check the files are named for this version
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: |
+          cd app/src-tauri/target/release/bundle
+          ls -l appimage deb rpm
+          for pattern in "appimage/*_${VERSION}_amd64.AppImage" "deb/*_${VERSION}_amd64.deb"; do
+            ls $pattern > /dev/null || { echo "::error::No file matches $pattern; the updater looks for these names."; exit 1; }
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bundles
+          path: |
+            app/src-tauri/target/release/bundle/appimage/*.AppImage
+            app/src-tauri/target/release/bundle/deb/*.deb
+            app/src-tauri/target/release/bundle/rpm/*.rpm
+          if-no-files-found: error
+          retention-days: 1
+
+  # Last, once everything exists: the tag and the Release.
+  publish:
+    name: Publish v${{ needs.plan.outputs.version }}
+    needs: [plan, build]
+    if: contains(fromJSON('["release","patch"]'), needs.plan.outputs.mode)
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+      CHANNEL: ${{ needs.plan.outputs.channel }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: bundles
+          path: artifacts
+      - name: GitHub Release
+        run: |
+          files="$(find artifacts -type f)"
+          if gh release view "v$VERSION" > /dev/null 2>&1; then
+            # !patch, or a retry: replace the files of the release that exists.
+            gh release upload "v$VERSION" $files --clobber
+          else
+            awk -v h="## v$VERSION " 'index($0, h) == 1 { on = 1; next } /^## v/ { on = 0 } on' CHANGELOG.md > notes.md
+            gh release create "v$VERSION" $files --target "$GITHUB_SHA" --title "v$VERSION" --notes-file notes.md \
+              $([ "$CHANNEL" = latest ] && echo --latest || echo --prerelease)
+          fi
+
+      # GitHub's shortest artifact expiry is a day, so they go here; a failed release never reaches this
+      # step and keeps them that day for the retry.
+      - name: Delete the build artifacts
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" --paginate --jq '.artifacts[].id' |
+            xargs -r -I{} gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/artifacts/{}"
+
+      - run: echo "Released v$VERSION ($CHANNEL) https://github.com/$GITHUB_REPOSITORY/releases/tag/v$VERSION" >> "$GITHUB_STEP_SUMMARY"
