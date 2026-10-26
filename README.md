@@ -8,7 +8,7 @@
 ![Tailwind](https://img.shields.io/badge/style-Tailwind%20v4-06B6D4?logo=tailwindcss&logoColor=white)
 ![SQLite](https://img.shields.io/badge/database-SQLite-003B57?logo=sqlite&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Linux-informational?logo=linux&logoColor=white)
-![Theme](https://img.shields.io/badge/theme-terminal%20green%20%7C%20light%20%2B%20dark-22c55e)
+![Theme](https://img.shields.io/badge/theme-VS%20Code%20style%20%7C%20light%20%2B%20dark-238636)
 ![Status](https://img.shields.io/badge/status-early%20%7C%20not%20yet%20tested%20on%20real%20distros-orange)
 
 Install anything on Linux. Drop in a package, archive, script, git address or a pasted `curl` / `wget`
@@ -20,12 +20,12 @@ SQLite, and can uninstall it later. Made for people new to Linux, who should not
 - **Read before run**: every install shows a plan (what the file is, the exact commands, whether admin rights are needed) and nothing runs until you press *install*
 - **Native first**: `.deb`, `.rpm`, Arch packages, Alpine `.apk`, `.snap`, `.flatpak`, `.AppImage`, `.run`, `.sh`, archives, source trees and `.dsc`
 - **Detects capabilities, not distro names**: looks for the package managers and helpers that exist, and for a read-only base system
-- **Live progress**: per-step install progress, a terminal log that streams as it runs, and a status bar with the running task
+- **Live progress**: per-step install progress, an Output panel that streams as it runs, and a status bar with the running task
 - **One admin prompt**: root steps are merged into a single `pkexec` call; if no password window can appear, Unpack shows the exact `sudo` command to run instead
 - **Tracked and reversible**: every install records how to remove it; the Library also lists packages you installed some other way
 - **History** of everything Unpack did and when
 - **Safe by design**: the UI never sends command lines, archives are checked for path traversal, files are re-hashed before running, and `--allow-untrusted` style flags are never passed silently
-- **Developer look**: VS Code style shell (activity bar, tabs, status bar), black and green terminal theme, light and dark, animations that respect *reduced motion*
+- **Familiar, quiet look**: VS Code style window with its own draggable titlebar, activity bar, tabs and status bar; light and dark; animations that respect *reduced motion*
 
 Research and design: [`development/docs/README.md`](development/docs/README.md).
 Architecture: [`development/docs/04-architecture.md`](development/docs/04-architecture.md), summarised [below](#how-it-fits-together).
@@ -161,9 +161,9 @@ pnpm lint                        # clippy
 
 ## Using it
 
-1. **Install**: drag a file onto the window, or paste a path, link, git address or `curl` command and press *analyze*.
+1. **Install**: drag a file onto the window, or paste a path, link, git address or `curl` command and press *Check*.
 2. Read the plan. Warnings (unsigned package, `curl | sh`, unencrypted link) and advice appear above the steps.
-3. Press *install*. Each step gets a spinner, then a tick; the terminal panel streams the output.
+3. Press *Install*. Each step gets a spinner, then a tick; the Output panel streams what the commands print.
 4. **Library** lists what Unpack installed (*unpack*) and everything the system managers report (*this computer*), each with a *remove* button that asks twice.
 5. **System** shows the detected distro, package managers, runtimes and missing helper tools.
 6. **History** is the event log. The sun/moon button at the bottom of the left bar switches between light and dark.
