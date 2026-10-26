@@ -21,12 +21,12 @@ Legend: `[x]` done, `[ ]` open, `[~]` partly done. Update this file in the same 
 - [x] `input.rs`: file path / URL / git URL / curl / wget parsing (incl. `| sh`, `sudo`, `-o`)
 - [x] `fetch.rs`: HTTPS download to private temp, size cap, SHA-256
 - [x] `archive.rs`: list members, path-traversal + size checks, extract (tar family, zip, 7z, bare compressed)
-- [ ] `plan.rs`: kind × system → steps (native, bootstrap, unsupported with advice)
-- [ ] `runner.rs`: run steps, merge root steps into one `pkexec`, stream logs
+- [x] `plan.rs`: kind × system → steps (native, bootstrap, unsupported with advice)
+- [x] `runner.rs`: run steps, merge root steps into one `pkexec`, stream logs
 - [x] `trace.rs`: snapshot diff of `~/.local`, `/opt`, `/usr/local` for scripts and builds
-- [ ] `store.rs`: SQLite schema, migrations via `user_version`
-- [ ] `library.rs`: scan apt/dnf/zypper/pacman/apk/snap/flatpak installed lists
-- [ ] Unit tests for all of the above
+- [x] `store.rs`: SQLite schema, migrations via `user_version`
+- [x] `library.rs`: scan apt/dnf/zypper/pacman/apk/snap/flatpak installed lists
+- [x] Unit tests for all of the above
 
 ## M3 — UI
 - [ ] App shell, sidebar, dark glass theme

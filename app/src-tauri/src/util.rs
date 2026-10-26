@@ -67,3 +67,7 @@ pub fn now() -> i64 {
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0)
 }
+
+/// Tests that change HOME must hold this so others reading it don't race.
+#[cfg(test)]
+pub static TEST_ENV: std::sync::Mutex<()> = std::sync::Mutex::new(());
