@@ -1,0 +1,24 @@
+[package]
+name = "unpack"
+version = "0.1.0"
+description = "Install anything on any Linux distro, and uninstall it later"
+edition = "2021"
+
+[lib]
+name = "unpack_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.32", features = ["bundled"] }
+sha2 = "0.10"
+shlex = "1"
+ureq = "2"
+walkdir = "2"
+tempfile = "3"
+thiserror = "1"

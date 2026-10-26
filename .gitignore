@@ -4,3 +4,4 @@ dist/
 .codegraph/
 *.log
 .DS_Store
+app/src-tauri/gen/

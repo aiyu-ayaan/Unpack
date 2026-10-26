@@ -11,19 +11,19 @@ Legend: `[x]` done, `[ ]` open, `[~]` partly done. Update this file in the same 
 - [x] Root `CLAUDE.md`
 
 ## M1 — Scaffold
-- [ ] Tauri 2 + Vite + React + TS + Tailwind v4 project in `app/`
-- [ ] App icon, CSP, minimal capabilities
+- [x] Tauri 2 + Vite + React + TS + Tailwind v4 project in `app/`
+- [x] App icon, CSP, minimal capabilities
 - [ ] `cargo check` and `pnpm build` green
 
 ## M2 — Backend core (Rust)
-- [ ] `system.rs`: os-release parse, package managers, runtimes, helpers, arch, immutable flag
-- [ ] `sniff.rs`: magic-byte classification for every format in `docs/02`
-- [ ] `input.rs`: file path / URL / git URL / curl / wget parsing (incl. `| sh`, `sudo`, `-o`)
-- [ ] `fetch.rs`: HTTPS download to private temp, size cap, SHA-256
-- [ ] `archive.rs`: list members, path-traversal + size checks, extract (tar family, zip, 7z, bare compressed)
+- [x] `system.rs`: os-release parse, package managers, runtimes, helpers, arch, immutable flag
+- [x] `sniff.rs`: magic-byte classification for every format in `docs/02`
+- [x] `input.rs`: file path / URL / git URL / curl / wget parsing (incl. `| sh`, `sudo`, `-o`)
+- [x] `fetch.rs`: HTTPS download to private temp, size cap, SHA-256
+- [x] `archive.rs`: list members, path-traversal + size checks, extract (tar family, zip, 7z, bare compressed)
 - [ ] `plan.rs`: kind × system → steps (native, bootstrap, unsupported with advice)
 - [ ] `runner.rs`: run steps, merge root steps into one `pkexec`, stream logs
-- [ ] `trace.rs`: snapshot diff of `~/.local`, `/opt`, `/usr/local` for scripts and builds
+- [x] `trace.rs`: snapshot diff of `~/.local`, `/opt`, `/usr/local` for scripts and builds
 - [ ] `store.rs`: SQLite schema, migrations via `user_version`
 - [ ] `library.rs`: scan apt/dnf/zypper/pacman/apk/snap/flatpak installed lists
 - [ ] Unit tests for all of the above
