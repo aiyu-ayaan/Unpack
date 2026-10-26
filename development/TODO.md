@@ -36,18 +36,19 @@ Legend: `[x]` done, `[ ]` open, `[~]` partly done. Update this file in the same 
 - [x] History view
 - [x] Empty/error states in plain language (target: first-time Linux user)
 
-## M4 — Format completeness (per-format install + uninstall working end to end)
-- [ ] .deb  - [ ] .rpm  - [ ] .pkg.tar.zst  - [ ] .apk (Alpine)  - [ ] Android .apk rejection
-- [ ] .snap  - [ ] .flatpak / .flatpakref / .flatpakrepo
-- [ ] .AppImage (copy, chmod, .desktop, icon, FUSE2 check, uninstall)
-- [ ] .run  - [ ] .bin  - [ ] .sh
-- [ ] Archives: tar.gz/tgz, tar.xz/txz, tar.bz2/tbz2, tar.zst, tar, zip, 7z, gz, xz, bz2, zst
-- [ ] Portable-app archive install (`~/.local/opt`, symlink, .desktop)
-- [ ] Source: source archive build recipes (autotools, CMake, Meson, Cargo, Go, Python, Node)
-- [ ] Source: `.dsc` (+ checksum verify, build-dep, dpkg-buildpackage)
-- [ ] Source: `.orig.tar.*` / `.debian.tar.*` pairing warning
-- [ ] Source: git URL (clone, detect, build; PKGBUILD / debian/ / .spec preferred)
-- [ ] curl / wget command input end to end
+## M4 — Format completeness
+Status: all code paths below exist and are unit-tested for planning/parsing. `[~]` = implemented, not yet run end to end on a real distro (see M5).
+- [~] .deb  - [~] .rpm  - [~] .pkg.tar.zst  - [~] .apk (Alpine)  - [~] Android .apk rejection
+- [~] .snap  - [~] .flatpak / .flatpakref / .flatpakrepo
+- [~] .AppImage (copy, chmod, .desktop, icon, FUSE2 check, uninstall)
+- [~] .run  - [~] .bin  - [~] .sh
+- [~] Archives: tar.gz/tgz, tar.xz/txz, tar.bz2/tbz2, tar.zst, tar, zip, 7z, gz, xz, bz2, zst
+- [~] Portable-app archive install (`~/.local/opt`, symlink, .desktop)
+- [~] Source: source archive build recipes (autotools, CMake, Meson, Cargo, Go, Python, Node)
+- [~] Source: `.dsc` (+ checksum verify, build-dep, dpkg-buildpackage)
+- [ ] Source: `.orig.tar.*` / `.debian.tar.*` pairing warning (bare file currently shows 'unrecognised')
+- [~] Source: git URL (clone, detect, build; PKGBUILD / debian/ / .spec preferred)
+- [~] curl / wget command input end to end
 
 ## M5 — Distro coverage
 - [ ] Debian/Ubuntu family tested (VM/container)
@@ -61,7 +62,7 @@ Legend: `[x]` done, `[ ]` open, `[~]` partly done. Update this file in the same 
 - [ ] glibc vs musl warning
 
 ## M6 — Packaging Unpack itself
-- [ ] `tauri build` → .deb, .rpm, AppImage
+- [~] `tauri build` → .deb (built OK, 5 MiB); .rpm and AppImage not tried
 - [ ] Flatpak manifest (host-spawn caveat) — evaluate feasibility
 - [ ] AUR PKGBUILD, COPR/PPA notes
 - [ ] CI (GitHub Actions) building on Ubuntu LTS
@@ -87,3 +88,13 @@ Legend: `[x]` done, `[ ]` open, `[~]` partly done. Update this file in the same 
 - [ ] FUSE2 package names on Fedora/openSUSE/Alpine
 - [ ] `unsquashfs -cat` for snap.yaml
 - [ ] Tauri capability + CSP config on current Tauri 2.x
+
+## Known gaps found while building (add here)
+- [ ] No end-to-end test on a real package install (needs VM/container matrix; unit tests cover plan building only)
+- [ ] `analyze` on a huge directory/archive blocks a worker thread with no cancel button
+- [ ] Download has no progress events
+- [ ] Work folders of abandoned plans stay until next startup cleanup
+- [ ] Trace snapshot walks all of `~/.local` (slow if it holds a lot of data)
+- [ ] Uninstall of leftover config/cache dirs
+- [ ] Bare `.orig.tar.gz` / `.debian.tar.xz` handling
+- [ ] System-wide uninstall list shows libraries on dnf/zypper (no "user-installed" filter for zypper)

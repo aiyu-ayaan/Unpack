@@ -17,6 +17,7 @@ Run from `app/`:
 - `pnpm install` — frontend deps
 - `pnpm tauri dev` — run the app
 - `pnpm build` — type-check + build frontend
+- `pnpm tauri build --bundles deb` — release `.deb` (bundle category must be a valid freedesktop one, e.g. `Utility`)
 - `cargo test --manifest-path src-tauri/Cargo.toml` — backend tests (must pass before committing Rust changes)
 - `cargo clippy --manifest-path src-tauri/Cargo.toml` — lints
 - System build deps (Debian/Ubuntu): `libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev build-essential`
@@ -31,3 +32,8 @@ Run from `app/`:
 - Every install must record an `UninstallSpec` in SQLite.
 - Keep docs and TODO current. Mark unverified facts **(unverified)** in docs until tested on a real system.
 - Commit in small stages with Conventional Commit messages. Do not add co-author or attribution trailers.
+
+## Gotchas
+- Don't `pkill -f vite` from a Claude shell; the pattern matches the shell's own command line. Kill by PID.
+- Tests that change `HOME`/`XDG_*` must hold `util::TEST_ENV`.
+- Debug binary loads `http://localhost:1420`; start `pnpm dev` first.

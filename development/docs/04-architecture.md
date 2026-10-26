@@ -20,7 +20,9 @@ Unpack/
     src/                    React UI
     src-tauri/              Rust backend
       src/
-        lib.rs              Tauri setup + command registration
+        lib.rs              Tauri setup, shared state, command registration
+        util.rs             which(), capture(), XDG dirs, display quoting
+        analyze.rs          input string → Plan (download/clone/list, recursion into wrappers)
         system.rs           distro / package manager / helper detection
         sniff.rs            magic-byte file classification
         input.rs            user input → Source (file, url, git, curl command)
@@ -98,15 +100,25 @@ DB path: `$XDG_DATA_HOME/unpack/unpack.db` (default `~/.local/share/unpack/`). S
 | Command | Purpose |
 |---|---|
 | `detect_system()` | Return `System` |
-| `analyze(input: String)` | Parse, fetch, sniff, build `Plan` |
-| `execute(plan_id: String)` | Run plan, emit `plan-log` / `plan-done` events, write DB |
+| `analyze(input, allow_http)` | Parse, fetch/clone, sniff, build `Plan`, store it by id |
+| `execute(plan_id, as_root)` | Run the stored plan, emit `plan-log`, record app + event in SQLite |
 | `list_apps()` | Tracked apps from SQLite |
-| `scan_system()` | Installed packages from each detected manager (read-only) |
-| `uninstall(app_id: i64)` | Build + run removal for a tracked app |
-| `app_events(app_id)` | Event log |
-| `open_dir(path)` | Reveal a path (opener) |
+| `history(app_id?)` | Event log |
+| `scan_system()` | Packages the system managers report (read-only) |
+| `uninstall_app(app_id)` | Run the stored `Uninstall` spec, mark row `removed` |
+| `uninstall_system(manager, ident)` | Remove a package Unpack did not install (name is validated) |
 
-Events: `plan-log {plan_id, stream, line}`, `plan-done {plan_id, ok, app_id?}`.
+Events: `plan-log {plan_id, stream, line}` (`plan_id` is `"uninstall"` during removals), `plan-done <plan_id>`.
+
+## Implementation notes (as built)
+
+- AppImages are copied to `~/Applications`; their own `.desktop` is rewritten (`Exec=` → our copy, `Icon=` → absolute path under `~/.local/share/unpack/icons`) and saved as `~/.local/share/applications/unpack-<name>.desktop`. Metadata is read with the AppImage's own `--appimage-extract <glob>`, which does not need FUSE **(unverified on every runtime)**. This executes the runtime from the file, as launching it would.
+- Portable archives go to `~/.local/opt/<name>`, with a symlink in `~/.local/bin` and a `.desktop`.
+- Scripts, `.run`, `.bin` and source builds are *traced*: snapshot of `~/.local`, `/opt`, `/usr/local` before and after; new files become the `Files` uninstall spec. Limits: files written elsewhere (`/usr/bin`, `/etc`) are not seen; modified existing files are not seen. The runner then reports `Manual` when nothing new was found.
+- `Files` removal only touches `~/.local`, `~/Applications`, `~/Unpacked`, `/opt`, `/usr/local` (`runner::safe_to_remove`). Paths needing root go through one `pkexec rm -rf --`.
+- Native package-recipe builds (`PKGBUILD`, `debian/`, `.dsc`) end in an `InstallBuilt` step: the produced package is planned and installed like a downloaded one, so the package manager owns removal.
+- Plans keep a SHA-256 of the analysed file; `execute` re-hashes and aborts on mismatch.
+- Work folders live in `~/.cache/unpack/work/<plan-id>`; folders older than a day are deleted at startup.
 
 ## UI
 
