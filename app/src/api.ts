@@ -25,6 +25,10 @@ export type App = {
 export type SysPkg = { name: string; version: string; manager: string };
 export type Event = { ts: number; level: string; message: string };
 export type RunResult = { ok: boolean; app_id: number | null; error: string | null };
+export type Channel = "alpha" | "beta" | "stable";
+export type UpdateInfo = { version: string; channel: Channel; self_install: boolean; skipped: string | null };
+export type Offer = { version: string; url: string; notes: string | null };
+export type Link = "repo" | "issues" | "developer" | "site";
 export type LogLine = { plan_id: string; stream: string; line: string };
 
 export const api = {
@@ -37,6 +41,14 @@ export const api = {
   uninstall: (appId: number) => invoke<RunResult>("uninstall_app", { appId }),
   uninstallSystem: (manager: string, ident: string) =>
     invoke<RunResult>("uninstall_system", { manager, ident }),
+  updateInfo: () => invoke<UpdateInfo>("update_info"),
+  updateCheck: () => invoke<Offer | null>("update_check"),
+  /** Resolves with where a package was saved, or null when the app restarts into the new version. */
+  updateInstall: () => invoke<string | null>("update_install"),
+  updateSetChannel: (channel: Channel) => invoke<void>("update_set_channel", { channel }),
+  updateSkip: () => invoke<void>("update_skip"),
+  openLink: (which: Link) => invoke<void>("open_link", { which }),
+  onUpdateProgress: (fn: (p: number | null) => void) => listen<number | null>("update-progress", (e) => fn(e.payload)),
   onLog: (fn: (l: LogLine) => void) => listen<LogLine>("plan-log", (e) => fn(e.payload)),
 };
 
