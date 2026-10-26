@@ -2,6 +2,7 @@ pub mod analyze;
 pub mod archive;
 pub mod fetch;
 pub mod input;
+pub mod libcheck;
 pub mod library;
 pub mod plan;
 pub mod runner;
@@ -41,6 +42,8 @@ struct RunResult {
     ok: bool,
     app_id: Option<i64>,
     error: Option<String>,
+    /// Problems found after a successful install, such as missing libraries.
+    notes: Vec<String>,
 }
 
 async fn blocking<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> Result<T, String> {
@@ -81,11 +84,14 @@ async fn execute(plan_id: String, as_root: bool, app: AppHandle, state: Shared<'
             Ok(o) => {
                 let id = db.add_app(&plan.name, plan.version.as_deref(), &plan.kind, &plan.source, plan.sha256.as_deref(), &o.uninstall)?;
                 db.event(Some(id), "info", &format!("Installed from {}", plan.source));
-                RunResult { ok: true, app_id: Some(id), error: None }
+                for n in &o.notes {
+                    db.event(Some(id), "warn", n);
+                }
+                RunResult { ok: true, app_id: Some(id), error: None, notes: o.notes }
             }
             Err(e) => {
                 db.event(None, "error", &format!("Install of {} failed: {e}", plan.name));
-                RunResult { ok: false, app_id: None, error: Some(e) }
+                RunResult { ok: false, app_id: None, error: Some(e), notes: vec![] }
             }
         };
         let _ = app.emit("plan-done", &plan_id);
@@ -123,11 +129,11 @@ async fn uninstall_app(app_id: i64, app: AppHandle, state: Shared<'_>) -> Result
             Ok(()) => {
                 db.set_status(app_id, "removed")?;
                 db.event(Some(app_id), "info", "Uninstalled");
-                RunResult { ok: true, app_id: Some(app_id), error: None }
+                RunResult { ok: true, app_id: Some(app_id), error: None, notes: vec![] }
             }
             Err(e) => {
                 db.event(Some(app_id), "error", &format!("Uninstall failed: {e}"));
-                RunResult { ok: false, app_id: Some(app_id), error: Some(e) }
+                RunResult { ok: false, app_id: Some(app_id), error: Some(e), notes: vec![] }
             }
         })
     })
@@ -143,7 +149,7 @@ async fn uninstall_system(manager: String, ident: String, app: AppHandle) -> Res
         };
         let user = manager == "flatpak";
         let r = runner::uninstall(&Uninstall::Manager { manager, ident, user }, &system::detect(), &emit);
-        Ok(RunResult { ok: r.is_ok(), app_id: None, error: r.err() })
+        Ok(RunResult { ok: r.is_ok(), app_id: None, error: r.err(), notes: vec![] })
     })
     .await?
 }

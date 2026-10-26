@@ -27,6 +27,7 @@ export default function Install({ onInstalled, onTask }: { onInstalled: () => vo
   const [phase, setPhase] = useState<Phase>("idle");
   const [plan, setPlan] = useState<Plan | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notes, setNotes] = useState<string[]>([]);
   const [lines, setLines] = useState<LogLine[]>([]);
   const [asRoot, setAsRoot] = useState(false);
   const [allowHttp, setAllowHttp] = useState(false);
@@ -37,7 +38,7 @@ export default function Install({ onInstalled, onTask }: { onInstalled: () => vo
 
   const analyze = useCallback(async (input: string) => {
     if (!input.trim()) return;
-    setPhase("analyzing"); setError(null); setPlan(null); setAsRoot(false); setShowPreview(false);
+    setPhase("analyzing"); setError(null); setNotes([]); setPlan(null); setAsRoot(false); setShowPreview(false);
     try {
       const p = await api.analyze(input.trim(), allowHttp);
       planId.current = p.id; setPlan(p); setPhase("review");
@@ -76,10 +77,10 @@ export default function Install({ onInstalled, onTask }: { onInstalled: () => vo
 
   const run = async () => {
     if (!plan) return;
-    setLines([]); setPhase("running"); setError(null);
+    setLines([]); setPhase("running"); setError(null); setNotes([]);
     try {
       const r = await api.execute(plan.id, asRoot);
-      if (r.ok) { setPhase("done"); onInstalled(); } else { setError(r.error); setPhase("failed"); }
+      if (r.ok) { setNotes(r.notes); setPhase("done"); onInstalled(); } else { setError(r.error); setPhase("failed"); }
     } catch (e) { setError(errText(e)); setPhase("failed"); }
   };
 
@@ -176,6 +177,7 @@ export default function Install({ onInstalled, onTask }: { onInstalled: () => vo
           {waitingRoot && <Banner tone="warn" icon={<Lock className="h-4 w-4" />}>Enter your password in the system prompt to continue. If no window appears, see the message after it fails.</Banner>}
           {phase !== "review" && <Log lines={lines} running={phase === "running"} />}
           {phase === "done" && <Banner tone="good" icon={<CheckCircle2 className="h-4 w-4" />}>Installed. You can find it in your Library.</Banner>}
+          {phase === "done" && notes.map((n, i) => <Banner key={i} tone="warn" icon={<AlertTriangle className="h-4 w-4" />}>{n}</Banner>)}
           {phase === "failed" && <Banner tone="bad" icon={<XCircle className="h-4 w-4" />}>{error ?? "Install failed"}</Banner>}
           {phase === "failed" && sudo && <button className="btn self-start" onClick={() => copy(sudo)}><Copy className="h-4 w-4" aria-hidden /> {copied ? "Copied" : "Copy terminal command"}</button>}
 

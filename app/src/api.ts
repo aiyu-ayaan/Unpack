@@ -24,7 +24,7 @@ export type App = {
 };
 export type SysPkg = { name: string; version: string; manager: string };
 export type Event = { ts: number; level: string; message: string };
-export type RunResult = { ok: boolean; app_id: number | null; error: string | null };
+export type RunResult = { ok: boolean; app_id: number | null; error: string | null; notes: string[] };
 export type Channel = "alpha" | "beta" | "stable";
 export type UpdateInfo = { version: string; channel: Channel; self_install: boolean; skipped: string | null };
 export type Offer = { version: string; url: string; notes: string | null };

@@ -104,6 +104,8 @@ fn run_root(group: &[RootCmd], sys: &System, emit: Emit) -> Result<(), String> {
 
 pub struct Outcome {
     pub uninstall: Uninstall,
+    /// Problems found after a successful install.
+    pub notes: Vec<String>,
 }
 
 pub fn run(plan: &Plan, as_root: bool, sys: &System, emit: Emit) -> Result<Outcome, String> {
@@ -116,7 +118,7 @@ pub fn run(plan: &Plan, as_root: bool, sys: &System, emit: Emit) -> Result<Outco
     let before = plan.trace.then(|| trace::snapshot(&roots));
     let flat_before = plan.discover_flatpak.then(flatpak_apps);
     let mut created: Vec<String> = vec![];
-    let mut nested: Option<Uninstall> = None;
+    let mut nested: Option<Outcome> = None;
 
     let last_cmd = plan.steps.iter().rposition(|s| matches!(s.action, Action::Cmd { .. }));
     let mut i = 0;
@@ -162,15 +164,16 @@ pub fn run(plan: &Plan, as_root: bool, sys: &System, emit: Emit) -> Result<Outco
                 if !sub.supported {
                     return Err(sub.warnings.join(" "));
                 }
-                nested = Some(run(&sub, false, sys, emit)?.uninstall);
+                nested = Some(run(&sub, false, sys, emit)?);
             }
         }
         i += 1;
     }
 
-    let uninstall = if let Some(n) = nested {
-        n
-    } else if let Some(b) = flat_before {
+    if let Some(n) = nested {
+        return Ok(n);
+    }
+    let uninstall = if let Some(b) = flat_before {
         let new: Vec<String> = flatpak_apps().into_iter().filter(|a| !b.contains(a)).collect();
         match (&plan.uninstall, new.as_slice()) {
             (Uninstall::Manager { manager, user, .. }, [one]) => Uninstall::Manager { manager: manager.clone(), ident: one.clone(), user: *user },
@@ -190,7 +193,11 @@ pub fn run(plan: &Plan, as_root: bool, sys: &System, emit: Emit) -> Result<Outco
     } else {
         plan.uninstall.clone()
     };
-    Ok(Outcome { uninstall })
+    let notes = match &uninstall {
+        Uninstall::Manager { manager, ident, user: false } => crate::libcheck::report(manager, ident, emit).into_iter().collect(),
+        _ => vec![],
+    };
+    Ok(Outcome { uninstall, notes })
 }
 
 fn flatpak_apps() -> Vec<String> {
