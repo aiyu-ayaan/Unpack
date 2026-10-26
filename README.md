@@ -1,0 +1,214 @@
+<img src="app/src-tauri/icons/128x128.png" alt="Unpack logo" width="72" />
+
+# Unpack
+
+![Rust](https://img.shields.io/badge/backend-Rust-000000?logo=rust&logoColor=white)
+![Tauri](https://img.shields.io/badge/shell-Tauri%202-24C8DB?logo=tauri&logoColor=white)
+![React](https://img.shields.io/badge/ui-React%20%2B%20TypeScript-149ECA?logo=react&logoColor=white)
+![Tailwind](https://img.shields.io/badge/style-Tailwind%20v4-06B6D4?logo=tailwindcss&logoColor=white)
+![SQLite](https://img.shields.io/badge/database-SQLite-003B57?logo=sqlite&logoColor=white)
+![Platform](https://img.shields.io/badge/platform-Linux-informational?logo=linux&logoColor=white)
+![Theme](https://img.shields.io/badge/theme-terminal%20green%20%7C%20light%20%2B%20dark-22c55e)
+![Status](https://img.shields.io/badge/status-early%20%7C%20not%20yet%20tested%20on%20real%20distros-orange)
+
+Install anything on Linux. Drop in a package, archive, script, git address or a pasted `curl` / `wget`
+command; Unpack works out what it is, builds a plan for your distro, shows it to you, runs it, tracks it in
+SQLite, and can uninstall it later. Made for people new to Linux, who should not need to know which of
+`apt`, `dnf`, `pacman` or `flatpak` they are on.
+
+- **Drop or paste anything**: a file, a path, an `https://` link, a git URL, or `curl -fsSL … | sh`
+- **Read before run**: every install shows a plan (what the file is, the exact commands, whether admin rights are needed) and nothing runs until you press *install*
+- **Native first**: `.deb`, `.rpm`, Arch packages, Alpine `.apk`, `.snap`, `.flatpak`, `.AppImage`, `.run`, `.sh`, archives, source trees and `.dsc`
+- **Detects capabilities, not distro names**: looks for the package managers and helpers that exist, and for a read-only base system
+- **Live progress**: per-step install progress, a terminal log that streams as it runs, and a status bar with the running task
+- **One admin prompt**: root steps are merged into a single `pkexec` call; if no password window can appear, Unpack shows the exact `sudo` command to run instead
+- **Tracked and reversible**: every install records how to remove it; the Library also lists packages you installed some other way
+- **History** of everything Unpack did and when
+- **Safe by design**: the UI never sends command lines, archives are checked for path traversal, files are re-hashed before running, and `--allow-untrusted` style flags are never passed silently
+- **Developer look**: VS Code style shell (activity bar, tabs, status bar), black and green terminal theme, light and dark, animations that respect *reduced motion*
+
+Research and design: [`development/docs/README.md`](development/docs/README.md).
+Architecture: [`development/docs/04-architecture.md`](development/docs/04-architecture.md), summarised [below](#how-it-fits-together).
+Security model: [`development/docs/05-security.md`](development/docs/05-security.md).
+Progress: [`development/TODO.md`](development/TODO.md).
+
+> **Early software.** The planning and parsing paths have unit tests (39 pass). Installs have not yet been run
+> end to end on a real Debian, Fedora, openSUSE, Arch or Alpine machine; see M5 in the TODO. Facts not yet
+> checked on a real system are marked **(unverified)** in the docs.
+
+## How it fits together
+
+```mermaid
+flowchart LR
+    subgraph UI["Tauri webview: React + TypeScript"]
+        Views["Install · Library · System · History"]
+    end
+
+    subgraph Core["Rust backend (Tauri 2 commands)"]
+        direction TB
+        Analyze["analyze(input)"] --> Parse["input<br/>file · url · git · curl"]
+        Parse --> Fetch["fetch<br/>HTTPS, size cap, SHA-256"]
+        Fetch --> Sniff["sniff<br/>magic bytes"]
+        Sniff --> Arch["archive<br/>traversal and size checks"]
+        Sys["system<br/>managers · helpers · immutable"] --> Plan
+        Arch --> Plan["plan<br/>Plan kept by id in memory"]
+        Exec["execute(plan_id)"] --> Run["runner<br/>stream logs"]
+        Plan --> Run
+        Run --> Trace["trace<br/>file diff for scripts and builds"]
+        Run --> Store[("SQLite<br/>unpack.db")]
+        Lib["library<br/>scan installed packages"]
+    end
+
+    Views -->|"analyze · execute · list_apps · history<br/>scan_system · uninstall_*"| Core
+    Core -.->|"plan-log events"| Views
+    Run -->|"program + args, never a shell string"| PM["apt · dnf · zypper · pacman · apk<br/>flatpak · snap"]
+    Run -->|"one merged call for root steps"| Pk["pkexec"]
+    Pk --> PM
+```
+
+The webview never sends a command. It asks the backend to `analyze` an input, gets a plan back, and asks
+it to `execute` that plan by id. Commands are `program + args` vectors; a shell is used only to merge root
+steps, and its arguments are quoted with `shlex`.
+
+### Data model
+
+```mermaid
+erDiagram
+    apps ||--o{ events : logs
+    apps {
+        int id PK
+        text name
+        text version
+        text kind
+        text source
+        text sha256
+        int installed_at
+        text status
+        text uninstall
+    }
+    events {
+        int id PK
+        int app_id
+        int ts
+        text level
+        text message
+    }
+```
+
+`apps.uninstall` holds the removal recipe as JSON: `Manager` (apt, dnf, zypper, pacman, apk, snap, flatpak),
+`Files` (AppImages, portable archives, traced scripts and builds), `Traced` (filled in after a run from a
+before and after diff of `~/.local`, `/opt` and `/usr/local`) or `Manual` (nothing safe can be derived).
+The database lives at `~/.local/share/unpack/unpack.db`.
+
+## Formats
+
+| Input | What Unpack does |
+|---|---|
+| `.deb`, `.rpm`, `.pkg.tar.zst`, `.apk` (Alpine) | Installs with the native manager when the system has it, otherwise explains what is missing |
+| Android `.apk` | Rejected with an explanation |
+| `.snap`, `.flatpak`, `.flatpakref`, `.flatpakrepo` | Installs with `snap` or `flatpak --user` |
+| `.AppImage` | Copies to `~/Applications`, makes it executable, adds a menu entry and icon, checks FUSE 2 |
+| `.run`, `.bin`, `.sh` | Shows the script, runs it only after you agree, traces the files it creates |
+| `.tar.*`, `.zip`, `.7z`, `.gz`, `.xz`, `.bz2`, `.zst` | Checks members, extracts, installs portable apps to `~/.local/opt` with a launcher |
+| Source tree, git URL, `.dsc` | Detects the build system (autotools, CMake, Meson, Cargo, Go, Python, Node, `PKGBUILD`, `debian/`), builds, then installs the result natively |
+| `curl … \| sh`, `wget -O …` | Never run as pasted. Downloads the file itself, hashes it, shows it, then classifies it like any other file |
+
+Per-format detail, traps and removal rules: [`development/docs/02-formats.md`](development/docs/02-formats.md).
+Distros, package managers and read-only systems: [`development/docs/03-distro-compat.md`](development/docs/03-distro-compat.md).
+
+## Admin rights
+
+Unpack never runs as root. Steps are tagged when they need it (system package installs, writes to `/opt`,
+removal of root-owned files), and consecutive root steps are merged into **one** `pkexec` prompt. User-scope
+options (`flatpak --user`, `~/.local`) are preferred whenever the format allows.
+
+| What happens | What you see |
+|---|---|
+| Password window opens | *Waiting for the admin password…* in the log and status bar |
+| You close the window | A clear message that nothing needing admin rights ran |
+| Refused, or no polkit agent in this desktop session | The reason, plus the exact `sudo sh -c …` command with a copy button |
+| `pkexec` is not installed | The same terminal command, and a warning in the plan before you start |
+| Unpack itself was started as root | A warning on the System page: user-scope apps would be installed for root |
+
+## Requirements
+
+- Linux with at least one of `apt`, `dnf`, `zypper`, `pacman`, `apk`, `flatpak` or `snap`
+- `polkit` (for `pkexec`) to get a graphical admin prompt
+- To build: Rust (stable, `cargo`), Node.js 18+, `pnpm`, and the Tauri system libraries
+
+On Debian / Ubuntu:
+
+```bash
+sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev build-essential
+```
+
+## Run in development
+
+```bash
+cd app
+pnpm install
+pnpm tauri dev         # starts Vite on http://localhost:1420 and the desktop window
+```
+
+The debug binary loads `http://localhost:1420`, so the dev server must be running first. Other commands:
+
+```bash
+pnpm build                                      # type-check and build the frontend
+pnpm tauri build --bundles deb                  # release .deb (also: rpm, appimage)
+cargo test --manifest-path src-tauri/Cargo.toml    # backend tests
+cargo clippy --manifest-path src-tauri/Cargo.toml  # lints
+```
+
+## Using it
+
+1. **Install**: drag a file onto the window, or paste a path, link, git address or `curl` command and press *analyze*.
+2. Read the plan. Warnings (unsigned package, `curl | sh`, unencrypted link) and advice appear above the steps.
+3. Press *install*. Each step gets a spinner, then a tick; the terminal panel streams the output.
+4. **Library** lists what Unpack installed (*unpack*) and everything the system managers report (*this computer*), each with a *remove* button that asks twice.
+5. **System** shows the detected distro, package managers, runtimes and missing helper tools.
+6. **History** is the event log. The sun/moon button at the bottom of the left bar switches between light and dark.
+
+## Where files go
+
+| Path | Purpose |
+|---|---|
+| `~/.local/share/unpack/unpack.db` | SQLite database of tracked installs and events |
+| `~/.local/share/unpack/icons/` | Icons extracted from AppImages |
+| `~/.local/share/applications/unpack-<name>.desktop` | Menu entries Unpack creates |
+| `~/Applications/` | AppImages |
+| `~/.local/opt/<name>` and `~/.local/bin` | Portable apps and their launchers |
+| `~/Unpacked/` | Plain extractions |
+| `~/.cache/unpack/work/<plan-id>` | Downloads and build folders; ones older than a day are removed at startup |
+
+Removal of tracked files only touches `~/.local`, `~/Applications`, `~/Unpacked`, `/opt` and `/usr/local`.
+
+## Security
+
+Unpack installs untrusted software for people who may not be able to judge it, so the app itself is built
+not to become a weapon: plan then consent, no network-to-shell pipes, least privilege, a backend-built plan
+that the UI cannot alter, hardened archive extraction, integrity checks where a format has them, and an
+event log of everything it ran. Full threat model: [`development/docs/05-security.md`](development/docs/05-security.md).
+
+A malicious program is still malicious once you approve it. The plan shows what will run; it cannot tell you
+whether to trust the source.
+
+## Known gaps
+
+- Not yet run end to end on real distros (Debian/Ubuntu, Fedora, openSUSE, Arch, Alpine, immutable systems)
+- Downloads have no byte progress; install progress advances per step
+- `analyze` on a very large archive or directory has no cancel button
+- Files written outside `~/.local`, `/opt` and `/usr/local` by a script are not traced, so its removal may be `Manual`
+- Leftover config and cache folders are not cleaned up after uninstall
+
+The full list is in [`development/TODO.md`](development/TODO.md).
+
+## License
+
+No license has been chosen yet.
+
+## Tests
+
+```bash
+cargo test --manifest-path app/src-tauri/Cargo.toml
+cd app && pnpm build
+```
