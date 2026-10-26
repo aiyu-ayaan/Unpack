@@ -122,7 +122,7 @@ Events: `plan-log {plan_id, stream, line}` (`plan_id` is `"uninstall"` during re
 
 ## UI
 
-Views: **Install** (drop zone + input; plan review; live log), **Library** (tracked and system-wide, search, uninstall), **System** (detected distro, managers, missing helpers with one-click bootstrap), **History** (events). Dark glass look, accent gradient, `lucide-react` icons. Styling tokens live in `app/src/index.css`.
+Views: **Install** (drop zone + input; plan review; live log), **Library** (tracked and system-wide, search, uninstall), **System** (detected distro, managers, missing helpers with one-click bootstrap), **History** (events). Editor-style shell (activity bar, tab strip, status bar showing distro and the running task). Terminal theme: black + green, light and dark; tokens are CSS variables in `app/src/index.css` switched by `html[data-theme]` (OS preference by default, toggle saved in `localStorage`). Install progress is per step, derived from the runner's `== label ==` log markers. `lucide-react` icons.
 
 ## Testing
 

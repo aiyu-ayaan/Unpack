@@ -31,7 +31,9 @@ Legend: `[x]` done, `[ ]` open, `[~]` partly done. Update this file in the same 
 - [x] Unit tests for all of the above
 
 ## M3 — UI
-- [x] App shell, sidebar, dark glass theme
+- [x] App shell: activity bar, editor-style tab strip, status bar (distro, manager, running task)
+- [x] Terminal theme (black + green), light and dark with OS default and toggle, reduced-motion support
+- [x] Progress bars: analyze/scan/remove (indeterminate), install (per-step from runner `== label ==` markers)
 - [x] Install view: drop zone, text input, plan review, live log, success/failure
 - [x] Library view: tracked + system packages, search, uninstall with confirm
 - [x] System view: detected distro, managers, missing helpers
@@ -94,7 +96,7 @@ Status: all code paths below exist and are unit-tested for planning/parsing. `[~
 ## Known gaps found while building (add here)
 - [ ] No end-to-end test on a real package install (needs VM/container matrix; unit tests cover plan building only)
 - [ ] `analyze` on a huge directory/archive blocks a worker thread with no cancel button
-- [ ] Download has no progress events
+- [ ] Download has no progress events (install bar is per step only)
 - [ ] Work folders of abandoned plans stay until next startup cleanup
 - [ ] Trace snapshot walks all of `~/.local` (slow if it holds a lot of data)
 - [ ] Uninstall of leftover config/cache dirs
