@@ -5,14 +5,17 @@
 #   ... | sh -s -- --channel beta     beta builds (and stable ones)
 #   ... | sh -s -- --version 0.0.1    a specific release
 #   ... | sh -s -- --uninstall        remove it (history and settings stay in ~/.local/share/unpack)
+#   ... | sh -s -- --from-source      musl only: build it here instead of downloading the build
 #
 # The AppImage goes to ~/.local/share/unpack, a place this user owns, because the app updates
 # itself by replacing that file (app/src-tauri/src/updates.rs). It also gets a menu entry with
 # the app's own icon and an `unpack` command. Re-running it updates.
 #
-# Works on any x86_64 or aarch64 glibc distro: it checks what the system has, not which distro it is. Without
+# Works on any x86_64 or aarch64 distro: it checks what the system has, not which distro it is. Without
 # libfuse2 (not installed by default on recent Ubuntu, Debian and Fedora) the AppImage is run in its
-# extract-and-run mode, so nothing has to be installed first. musl systems (Alpine) cannot run it.
+# extract-and-run mode, so nothing has to be installed first. musl systems (Alpine) cannot run an
+# AppImage: they get the `-musl.tar.gz` the release workflow builds on Alpine, or build it from source
+# with scripts/build-musl.sh when there is none. Either way WebKitGTK comes from `apk` (asks for root).
 #
 # POSIX sh (also busybox ash): it is piped into whatever `sh` is, which on Debian and Ubuntu is dash.
 set -eu
@@ -20,6 +23,9 @@ set -eu
 API="${UNPACK_RELEASES_URL:-https://api.github.com/repos/aiyu-ayaan/Unpack/releases?per_page=100}"
 DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
 APP="$DATA_HOME/unpack/Unpack.AppImage"
+# musl: a plain binary instead of the AppImage.
+MUSL_APP="$DATA_HOME/unpack/unpack"
+REPO="https://github.com/aiyu-ayaan/Unpack"
 BIN="$HOME/.local/bin/unpack"
 # StartupWMClass matches the window class Tauri gives the app, which ties the window to this entry.
 DESKTOP_FILE="$DATA_HOME/applications/unpack.desktop"
@@ -31,6 +37,7 @@ CHANNEL=stable
 VERSION=""
 FROM_FILE=""
 UNINSTALL=0
+FROM_SOURCE=0
 
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
@@ -40,7 +47,8 @@ while [ $# -gt 0 ]; do
     --version) VERSION="${2:?--version needs a value}"; VERSION="${VERSION#v}"; shift 2 ;;
     --from-file) FROM_FILE="${2:?--from-file needs a path}"; shift 2 ;;
     --uninstall) UNINSTALL=1; shift ;;
-    -h | --help) sed -n '2,7p' "$0" 2>/dev/null || true; echo "  --from-file PATH   install a local AppImage"; exit 0 ;;
+    --from-source) FROM_SOURCE=1; shift ;;
+    -h | --help) sed -n '2,8p' "$0" 2>/dev/null || true; echo "  --from-file PATH   install a local AppImage"; exit 0 ;;
     *) die "unknown option: $1" ;;
   esac
 done
@@ -53,9 +61,9 @@ refresh_menus() {
 }
 
 if [ "$UNINSTALL" -eq 1 ]; then
-  rm -f "$APP" "$APP.part" "$DESKTOP_FILE" "$ICON_FILE"
+  rm -f "$APP" "$APP.part" "$MUSL_APP" "$MUSL_APP.part" "$DESKTOP_FILE" "$ICON_FILE"
   # Only our own link or wrapper.
-  if { [ -L "$BIN" ] && [ "$(readlink "$BIN")" = "$APP" ]; } || grep -qs "$WRAPPER_MARK" "$BIN" 2>/dev/null; then rm -f "$BIN"; fi
+  if { [ -L "$BIN" ] && { [ "$(readlink "$BIN")" = "$APP" ] || [ "$(readlink "$BIN")" = "$MUSL_APP" ]; }; } || grep -qs "$WRAPPER_MARK" "$BIN" 2>/dev/null; then rm -f "$BIN"; fi
   refresh_menus
   echo "Unpack is removed. Its history and settings are kept in $DATA_HOME/unpack."
   exit 0
@@ -68,10 +76,37 @@ case "$(uname -m)" in
   *) die "Unpack for Linux is built for x86_64 and aarch64; this machine is $(uname -m)." ;;
 esac
 
-# The AppImage is built against glibc. Alpine and other musl systems fail with a cryptic loader error.
+# The AppImage is built against glibc; musl systems get a native build instead.
+MUSL=""
 if ldd --version 2>&1 | grep -qi musl; then
-  die "this system uses musl libc (Alpine, Void musl); the Unpack AppImage needs glibc. Build from source instead: see the README."
+  MUSL=1
+  APP="$MUSL_APP"
+  ASSET="_$(uname -m)-musl\\.tar\\.gz"
+else
+  [ "$FROM_SOURCE" -eq 0 ] || die "--from-source is for musl systems (Alpine); this one runs the AppImage."
+  ASSET="_${ARCH}\\.AppImage"
 fi
+
+# Root only for system packages, through whichever of sudo or doas exists.
+as_root() {
+  if command -v sudo >/dev/null 2>&1; then sudo "$@"
+  elif command -v doas >/dev/null 2>&1; then doas "$@"
+  else die "need root to run: $* (install sudo or doas, or run that as root first)"
+  fi
+}
+# Install the apk packages that are missing, if this system has apk; elsewhere say what is needed.
+need_apk() {
+  if ! command -v apk >/dev/null 2>&1; then
+    echo "warning: no apk here; make sure these (or your system's equivalents) are installed: $*" >&2
+    return 0
+  fi
+  missing=""
+  for p in "$@"; do apk info -e "$p" >/dev/null 2>&1 || missing="$missing $p"; done
+  [ -z "$missing" ] && return 0
+  echo "Installing system packages:$missing"
+  # shellcheck disable=SC2086
+  as_root apk add $missing || die "could not install:$missing"
+}
 
 has_fuse2() {
   { PATH="$PATH:/sbin:/usr/sbin" ldconfig -p 2>/dev/null | grep -q 'libfuse\.so\.2'; } && return 0
@@ -100,13 +135,21 @@ else
 
   echo "Looking up Unpack releases..."
   releases="$(fetch "$API")" || die "could not reach GitHub. Try again in a while."
-  # Every AppImage URL as "<sort key> <version> <url>"; the newest is last after a sort. The key
+  # Every build URL as "<sort key> <version> <url>"; the newest is last after a sort. The key
   # orders by number, then alpha < beta < stable, then the pre-release number (plain `sort -V`
   # puts 0.0.1 before 0.0.1-alpha.1). A channel takes its own builds and every steadier one.
-  urls="$(printf '%s\n' "$releases" | grep -oE "https://[^\"]*/Unpack_[0-9][^\"/]*_${ARCH}\\.AppImage" | sort -u)"
+  find_urls() { printf '%s\n' "$releases" | grep -oE "https://[^\"]*/Unpack_[0-9][^\"/]*$1" | sort -u || true; }
+  urls="$(find_urls "$ASSET")"
+  SOURCE=""
+  if [ -n "$MUSL" ] && { [ "$FROM_SOURCE" -eq 1 ] || [ -z "$urls" ]; }; then
+    # Build that release from source: its version comes from the release's other files.
+    [ "$FROM_SOURCE" -eq 1 ] || echo "No Alpine (musl) build in the releases; building from source instead."
+    SOURCE=1
+    urls="$(find_urls '_[a-z0-9]+\.AppImage')"
+  fi
   newest_on() {
     printf '%s\n' "$urls" | awk -v channel="$1" -v want="$VERSION" '{
-      v = $0; sub(/.*\/Unpack_/, "", v); sub(/_[a-z0-9]+\.AppImage$/, "", v)
+      v = $0; sub(/.*\/Unpack_/, "", v); sub(/_.*/, "", v)
       if (v !~ /^[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta)\.[0-9]+)?$/) next
       split(v, p, /[.-]/)
       stage = 2; n = 99999
@@ -128,20 +171,49 @@ else
   done
   [ -n "$newest" ] || die "no Linux build found for ${VERSION:+version $VERSION}$([ -n "$VERSION" ] || echo "any channel"). See the releases page."
   label="$(printf '%s' "$newest" | cut -d' ' -f2)"
-  echo "Downloading Unpack $label..."
-  fetch_to "$(printf '%s' "$newest" | cut -d' ' -f3)" "$APP.part" || die "the download failed. Nothing was changed."
+  if [ -n "$MUSL" ]; then
+    work="$(mktemp -d)"
+    trap 'rm -rf "$APP.part" "$work"' EXIT INT TERM
+    if [ -n "$SOURCE" ]; then
+      echo "Downloading the Unpack $label source..."
+      fetch_to "$REPO/archive/refs/tags/v$label.tar.gz" "$work/src.tar.gz" || die "could not download the source of v$label."
+      mkdir "$work/src" && tar -xzf "$work/src.tar.gz" -C "$work/src" --strip-components 1
+      # shellcheck disable=SC2046
+      need_apk $(sh "$work/src/scripts/build-musl.sh" --deps)
+      echo "Building Unpack $label (this takes a while)..."
+      sh "$work/src/scripts/build-musl.sh" "$work/out" >"$work/build.log" 2>&1 || { tail -n 30 "$work/build.log" >&2; die "the build failed. Nothing was changed."; }
+      tarball="$(ls "$work"/out/*-musl.tar.gz)"
+    else
+      echo "Downloading Unpack $label..."
+      tarball="$work/unpack.tar.gz"
+      fetch_to "$(printf '%s' "$newest" | cut -d' ' -f3)" "$tarball" || die "the download failed. Nothing was changed."
+    fi
+    tar -xzf "$tarball" -C "$work" unpack unpack.png || die "that is not an Unpack build. Nothing was changed."
+    cp "$work/unpack" "$APP.part"
+    mkdir -p "$(dirname "$ICON_FILE")"
+    cp "$work/unpack.png" "$ICON_FILE"
+  else
+    echo "Downloading Unpack $label..."
+    fetch_to "$(printf '%s' "$newest" | cut -d' ' -f3)" "$APP.part" || die "the download failed. Nothing was changed."
+  fi
 fi
 
 # An error page saved under the right name must not become the app.
-[ "$(head -c 4 "$APP.part" | od -An -c | tr -d ' \n')" = '177ELF' ] || die "that is not an AppImage. Nothing was changed."
+[ "$(head -c 4 "$APP.part" | od -An -c | tr -d ' \n')" = '177ELF' ] || die "that is not a Linux program. Nothing was changed."
 chmod 755 "$APP.part"
 # A rename within one directory: a running copy keeps running from the old file until restarted.
 mv -f "$APP.part" "$APP"
 trap - EXIT INT TERM
+[ -z "${work:-}" ] || rm -rf "$work"
 
-# The icon comes out of the AppImage itself, so it is always this build's.
+# The musl build links against the system's WebKitGTK and GTK.
+[ -z "$MUSL" ] || need_apk webkit2gtk-4.1 gtk+3.0
+
+# The icon comes out of the AppImage itself, so it is always this build's (musl: from its tarball).
 tmp="$(mktemp -d)"
-if (cd "$tmp" && "$APP" --appimage-extract "$ICON_PATH" >/dev/null 2>&1) && [ -f "$tmp/squashfs-root/$ICON_PATH" ]; then
+if [ -n "$MUSL" ]; then
+  [ -f "$ICON_FILE" ] || echo "warning: no icon; the menu entry will use a generic one." >&2
+elif (cd "$tmp" && "$APP" --appimage-extract "$ICON_PATH" >/dev/null 2>&1) && [ -f "$tmp/squashfs-root/$ICON_PATH" ]; then
   mkdir -p "$(dirname "$ICON_FILE")"
   cp "$tmp/squashfs-root/$ICON_PATH" "$ICON_FILE"
 else
@@ -151,7 +223,7 @@ rm -rf "$tmp"
 
 # Without libfuse2 an AppImage cannot mount itself; extract-and-run needs nothing installed.
 EXTRACT=""
-has_fuse2 || EXTRACT=1
+[ -n "$MUSL" ] || has_fuse2 || EXTRACT=1
 
 # Same fields as the entry Tauri writes into the .deb. The icon is an absolute path so it shows
 # without waiting for the icon theme cache.
