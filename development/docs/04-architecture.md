@@ -1,0 +1,120 @@
+# 04 — Architecture
+
+| Layer | Technology |
+|---|---|
+| Backend | Rust (Tauri 2 commands) |
+| UI | Tauri 2 webview + React + TypeScript + Tailwind CSS v4 |
+| Storage | SQLite via `rusqlite` (bundled) |
+| Linux integration | Shelling out to APT, DNF, Zypper, Pacman, apk, Flatpak, Snap CLIs. No PackageKit dependency. |
+
+Repo layout:
+
+```
+Unpack/
+  CLAUDE.md                 project guide for Claude
+  development/
+    TODO.md                 master task list
+    docs/                   these docs
+  app/                      the Tauri application
+    package.json, vite.config.ts, index.html
+    src/                    React UI
+    src-tauri/              Rust backend
+      src/
+        lib.rs              Tauri setup + command registration
+        system.rs           distro / package manager / helper detection
+        sniff.rs            magic-byte file classification
+        input.rs            user input → Source (file, url, git, curl command)
+        fetch.rs            download + SHA-256
+        archive.rs          list / safety-check / extract archives
+        plan.rs             Source + System → Plan (steps, warnings, root flags)
+        runner.rs           execute a Plan, stream logs, pkexec merge
+        trace.rs            filesystem snapshot diff for untracked installers
+        store.rs            SQLite schema + queries
+        library.rs          scan system package managers for installed software
+```
+
+## Data flow
+
+```
+user input (drop / path / URL / curl cmd / git URL)
+   │
+   ▼
+analyze(input)  ──► input::parse ─► fetch (if remote) ─► sniff ─► archive peek
+   │                                                          │
+   │                          system::detect ─────────────────┤
+   ▼                                                          ▼
+Plan { id, title, kind, warnings[], steps[], uninstall: UninstallSpec }   (kept in backend memory by id)
+   │
+   ▼  UI shows plan, user approves
+execute(plan_id)  ──► runner: for each step group → spawn → stream "plan-log" events
+   │                         └─ trace::snapshot before/after for unmanaged installers
+   ▼
+store: apps row (name, version, kind, manager, ident, files[], uninstall spec) + events
+```
+
+The UI never sends commands. See [05-security.md](05-security.md).
+
+## Core types (Rust)
+
+- `System { distro, family, arch, managers[], runtimes[], helpers[], immutable }`
+- `Kind` — `Deb, Rpm, PacmanPkg, AlpineApk, AndroidApk, Snap, FlatpakBundle, FlatpakRef, FlatpakRepo, AppImage, RunInstaller, BinInstaller, Script, Archive(ArchiveFmt), Dsc, GitRepo, Unknown`
+- `Step { label, program, args, needs_root, cwd?, env? }`
+- `Plan { id, title, kind, name, version, source, sha256, warnings[], steps[], uninstall }`
+- `UninstallSpec` — one of:
+  - `Manager { manager, ident }` (apt/dnf/zypper/pacman/apk/snap/flatpak)
+  - `Files { paths[] , dirs[] }` (AppImage, portable archives, traced scripts and builds)
+  - `Manual { note }` (nothing safe can be derived)
+- `Supported` result inside plan: `Native`, `NeedsBootstrap(steps)`, `Unsupported(reason, alternatives[])`.
+
+## SQLite schema (v1)
+
+```sql
+CREATE TABLE apps (
+  id            INTEGER PRIMARY KEY,
+  name          TEXT NOT NULL,
+  version       TEXT,
+  kind          TEXT NOT NULL,       -- Kind as string
+  manager       TEXT,                -- apt|dnf|zypper|pacman|apk|snap|flatpak|files|manual
+  ident         TEXT,                -- package name / app-id
+  source        TEXT,                -- original input (path, URL, git URL)
+  sha256        TEXT,
+  installed_at  INTEGER NOT NULL,    -- unix seconds
+  status        TEXT NOT NULL,       -- installed|removed|failed
+  uninstall     TEXT NOT NULL        -- JSON UninstallSpec
+);
+CREATE TABLE events (
+  id      INTEGER PRIMARY KEY,
+  app_id  INTEGER REFERENCES apps(id) ON DELETE CASCADE,
+  ts      INTEGER NOT NULL,
+  level   TEXT NOT NULL,             -- info|warn|error
+  message TEXT NOT NULL
+);
+```
+
+DB path: `$XDG_DATA_HOME/unpack/unpack.db` (default `~/.local/share/unpack/`). Schema version tracked with `PRAGMA user_version`.
+
+## Tauri commands
+
+| Command | Purpose |
+|---|---|
+| `detect_system()` | Return `System` |
+| `analyze(input: String)` | Parse, fetch, sniff, build `Plan` |
+| `execute(plan_id: String)` | Run plan, emit `plan-log` / `plan-done` events, write DB |
+| `list_apps()` | Tracked apps from SQLite |
+| `scan_system()` | Installed packages from each detected manager (read-only) |
+| `uninstall(app_id: i64)` | Build + run removal for a tracked app |
+| `app_events(app_id)` | Event log |
+| `open_dir(path)` | Reveal a path (opener) |
+
+Events: `plan-log {plan_id, stream, line}`, `plan-done {plan_id, ok, app_id?}`.
+
+## UI
+
+Views: **Install** (drop zone + input; plan review; live log), **Library** (tracked and system-wide, search, uninstall), **System** (detected distro, managers, missing helpers with one-click bootstrap), **History** (events). Dark glass look, accent gradient, `lucide-react` icons. Styling tokens live in `app/src/index.css`.
+
+## Testing
+
+- Rust unit tests: `sniff` (byte fixtures), `input` (curl/wget/git parsing), `system` (os-release parsing), `plan` (kind × family matrix → expected commands), `archive` (path-traversal rejection), `trace` (diff).
+- `cargo test` must pass before each commit that touches Rust.
+- Frontend: `pnpm build` type-checks.
+- Manual matrix of real distros in VMs/containers: see TODO "Verification".

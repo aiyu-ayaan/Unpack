@@ -1,0 +1,41 @@
+# 05 — Security model
+
+Unpack installs untrusted software for non-expert users, so the app itself must be hard to turn into a weapon.
+
+## Principles
+
+1. **Explain, then act.** Every install shows a plan: what the file is, which commands will run, whether root is needed.
+2. **Never pipe network to a shell.** For `curl … | sh`, download to a private temp file, compute SHA-256, show the script, require consent, then run the local copy. This is not magic safety (a malicious script is still malicious; also a server can serve different content to `curl` than to a browser, so we show what *we* fetched). It guarantees the user saw what runs, and gives a hash to record.
+3. **Least privilege.** User-scope first. Root only for steps that need it, merged into one `pkexec` prompt.
+4. **Frontend cannot inject commands.** The webview asks the backend to `analyze(input)`, which returns a plan stored in backend memory under an id. `execute(plan_id)` runs only what the backend built. The UI never sends a command line to run.
+5. **No shell interpolation.** Commands are `program + args` vectors. When a shell is required (merged root steps), arguments are quoted with `shlex`.
+6. **Untrusted archives.** Reject path traversal, absolute members and escaping symlinks; cap size and member count; extract into a fresh `0700` temp dir.
+7. **Integrity where available.** Verify `.dsc` checksums, show GPG/signature state from the package manager, never silently pass `--allow-untrusted` / `--no-gpg-checks` / `--dangerous` — the UI must state it and the user must accept.
+8. **Download hygiene.** HTTPS only by default (HTTP needs an explicit tick), follow redirects up to a limit, size cap, record final URL and SHA-256.
+9. **Record everything.** Each install writes an event log row (what ran, exit code, output tail) to SQLite.
+
+## Threats and mitigations
+
+| Threat | Mitigation |
+|---|---|
+| Malicious pasted command (`curl … \| sudo bash`) | Parse, do not execute pasted text; strip `sudo`; fetch and review |
+| Script that wipes files | Static pattern scan (`rm -rf /`, `dd of=/dev`, `mkfs`, fork bombs) → red warning; never run silently |
+| Zip-slip / tar traversal | Member-path validation before extract (done by our code, then system tar) |
+| Decompression bomb | Cap uncompressed size via listing before extract |
+| Wrong architecture binary | Check ELF machine / `.deb` Architecture / `.rpm` arch vs host |
+| Android `.apk` mistaken for Alpine | Zip magic check |
+| Privilege escalation via helper | v1 uses `pkexec` with fixed commands built in backend. v2 helper accepts only a closed verb set |
+| Compromised update source | Update checks are notification-only until signature verification exists |
+| UI XSS (Tauri webview) | Strict CSP, no remote content, no `dangerouslySetInnerHTML`, Tauri capabilities restricted to the commands we define |
+| TOCTOU between analysis and install | Hash the file at analyze time; re-hash before execute; abort on mismatch |
+
+## PackageKit lesson
+
+An advisory cited in research: PackageKit ≤ 1.1.13 let `InstallFiles`, `GetFilesLocal`, `GetDetailsLocal` touch files before checking authorization (fixed 1.2.3). Takeaway: local-file install is a privileged-parse attack surface. Do **all** parsing of untrusted packages as the unprivileged user, and only hand a vetted path to root.
+
+## Tauri hardening checklist
+
+- `app.security.csp` set; `default-src 'self'`.
+- Capabilities: only `core:default` plus our own commands and the event system. No `shell`, `fs`, `http` plugin exposed to the webview.
+- No `withGlobalTauri`.
+- Drag-and-drop paths come from Tauri's drag event, not from `<input type=file>` blob reads.
