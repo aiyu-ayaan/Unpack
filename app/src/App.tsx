@@ -5,6 +5,7 @@ import Install from "./views/Install";
 import Library from "./views/Library";
 import System from "./views/System";
 import History from "./views/History";
+import { TitleBar } from "./components/TitleBar";
 
 const NAV = [
   { id: "install", label: "Install", file: "install", icon: PackagePlus },
@@ -42,6 +43,7 @@ export default function App() {
 
   return (
     <div className="flex h-full flex-col">
+      <TitleBar title={`${current.label} — Unpack`} />
       <div className="flex min-h-0 flex-1">
         <nav aria-label="Main" className="flex w-16 shrink-0 flex-col items-center gap-1 border-r border-line bg-side py-3">
           <div className="mb-3 grid h-9 w-9 place-items-center rounded-md border border-accent/40 bg-accent/10 font-mono text-lg font-bold text-accent-ink glow" aria-hidden>
