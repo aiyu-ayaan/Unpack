@@ -63,13 +63,6 @@ export default function App() {
         </nav>
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <div className="flex h-9 shrink-0 border-b border-line bg-side" role="presentation">
-            <div className="relative -mb-px flex items-center gap-2 border-r border-line bg-bg px-3 text-strong">
-              <span className="absolute inset-x-0 top-0 h-px bg-accent-ink" aria-hidden />
-              <current.icon className="h-4 w-4 text-accent-ink" aria-hidden />
-              {current.label}
-            </div>
-          </div>
           {task && <Progress value={task.progress} label={task.label} />}
           <main className="min-h-0 flex-1 overflow-auto bg-bg px-10 py-8">
             <div hidden={view !== "install"}><Install onInstalled={() => setVersion((v) => v + 1)} onTask={setTask} /></div>
