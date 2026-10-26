@@ -20,7 +20,7 @@ The default channel is the one the installed build belongs to (an alpha build st
 | dpkg system | `_amd64.deb` / `_arm64.deb` |
 | rpm system (no dpkg) | `.x86_64.rpm` / `.aarch64.rpm` |
 
-Releases without a matching asset are skipped. These are the default names `tauri build` writes.
+Releases without a matching asset are skipped. These are the default names `tauri build` writes. How releases are made: [08-release.md](08-release.md).
 
 ## Flow
 1. At start the app asks `update_check`; the answer is kept in the backend. A found update opens a dialog (notes, *Later*, *Update*). *Later* is remembered for that version. Settings shows the same state.

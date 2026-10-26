@@ -33,6 +33,7 @@ Run from the repo root (a pnpm workspace; root scripts forward to `app/`):
 - Every install must record an `UninstallSpec` in SQLite.
 - Keep docs and TODO current. Mark unverified facts **(unverified)** in docs until tested on a real system.
 - Commit in small stages with Conventional Commit messages. Do not add co-author or attribution trailers.
+- Releases are marker commits on `master` (`!alpha`, `!beta`, `!stable`, `!fix`, `!feat`, `!major`, `!patch`, e.g. `!alpha : First build`) that open a release PR; merging it builds and publishes. Only commit a marker when the user asks for a release. Rules in `development/docs/08-release.md`; read it before changing `.github/workflows/release.yml`, `scripts/release-version.mjs`, `scripts/set-version.mjs` or any version field. Never edit a version by hand.
 
 ## Gotchas
 - Don't `pkill -f vite` from a Claude shell; the pattern matches the shell's own command line. Kill by PID.
