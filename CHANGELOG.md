@@ -1,3 +1,14 @@
+## v0.0.1-alpha.2 (2026-10-26)
+
+- !alpha : Fix installs that do not open: AppImage library paths, Electron sandbox, missing libraries
+- docs: AppImage library path, Electron sandbox, missing-library check; mark the three bugs fixed
+- feat(install): report missing shared libraries after a native install
+- fix(appimage): start Electron AppImages that the system sandbox blocks; refuse a .deb it cannot read
+- fix(runner): run host tools without the AppImage's bundled library paths
+- docs(TODO): log the AppImage library-path bug and the missing-library check found with Ghost Downloader
+- docs(README): drop the status badge and state the MIT license
+- docs: add the MIT license
+
 ## v0.0.1-alpha.1 (2026-10-26)
 
 - !alpha : First public build
