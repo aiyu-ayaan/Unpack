@@ -42,7 +42,11 @@ pub fn download(url: &str, dir: &Path, allow_http: bool) -> Result<Downloaded, S
         .call()
         .map_err(|e| format!("Download failed: {e}"))?;
     let final_url = resp.get_url().to_string();
-    let name = crate::input::url_file_name(&final_url);
+    // A redirect target is often an opaque id (GitHub release assets), so prefer the server's file name, then the requested one.
+    let name = resp.header("Content-Disposition").and_then(disposition_name).unwrap_or_else(|| {
+        let asked = crate::input::url_file_name(url);
+        if asked == "download" { crate::input::url_file_name(&final_url) } else { asked }
+    });
     let path = dir.join(sanitize(&name));
     let mut out = std::fs::File::create(&path).map_err(|e| e.to_string())?;
     let mut reader = resp.into_reader().take(MAX_DOWNLOAD + 1);
@@ -62,6 +66,13 @@ pub fn download(url: &str, dir: &Path, allow_http: bool) -> Result<Downloaded, S
         out.write_all(&buf[..n]).map_err(|e| e.to_string())?;
     }
     Ok(Downloaded { path, sha256: hex(&hasher.finalize()), final_url })
+}
+
+/// The `filename=` of a Content-Disposition header, reduced to its last path component.
+fn disposition_name(h: &str) -> Option<String> {
+    let v = h.split(';').find_map(|p| p.trim().strip_prefix("filename="))?;
+    let name = v.trim().trim_matches('"').rsplit(['/', '\\']).next()?.to_string();
+    if name.is_empty() { None } else { Some(name) }
 }
 
 fn sanitize(name: &str) -> String {
@@ -94,5 +105,12 @@ mod tests {
     fn sanitizes() {
         assert_eq!(sanitize(".."), "download");
         assert_eq!(sanitize("a/b"), "a_b");
+    }
+
+    #[test]
+    fn reads_disposition_file_name() {
+        assert_eq!(disposition_name("attachment; filename=ripgrep-15.tar.gz").as_deref(), Some("ripgrep-15.tar.gz"));
+        assert_eq!(disposition_name("attachment; filename=\"../a b.deb\"").as_deref(), Some("a b.deb"));
+        assert_eq!(disposition_name("inline"), None);
     }
 }
