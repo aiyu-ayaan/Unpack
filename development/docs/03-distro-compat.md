@@ -66,7 +66,8 @@ Priority: **(1) native format for this family** → **(2) universal runtime alre
 
 - Never run the whole app as root.
 - Steps are tagged `needs_root`. Consecutive root steps are merged into one `pkexec sh -c '…'` call so the user sees one password prompt.
-- `pkexec` resets the environment (no `HOME`, `DISPLAY`); do not rely on them in root steps.
+- `pkexec` resets the environment (no `HOME`, `DISPLAY`); do not rely on them in root steps. The merged script starts with `export DEBIAN_FRONTEND=noninteractive;`.
+- `pkexec` exit 126 = password dialog dismissed; exit 127 with a "Not authorized" / "authentication agent" message on stderr = not granted or no polkit agent running (common on bare window managers). Both become plain-language errors; 127 also shows the `sudo sh -c …` fallback. Plain 127 without that message is the script's own "command not found".
 - If `pkexec` is missing, show the exact `sudo` command for the user to run in a terminal (copy button). A custom polkit action + narrow helper binary is a later milestone.
 - Prefer user-scope (`flatpak --user`, `~/.local`) whenever the format allows it.
 

@@ -23,6 +23,8 @@ Legend: `[x]` done, `[ ]` open, `[~]` partly done. Update this file in the same 
 - [x] `archive.rs`: list members, path-traversal + size checks, extract (tar family, zip, 7z, bare compressed)
 - [x] `plan.rs`: kind × system → steps (native, bootstrap, unsupported with advice)
 - [x] `runner.rs`: run steps, merge root steps into one `pkexec`, stream logs
+- [x] pkexec failure handling: cancelled (126), not authorized / no polkit agent (127) with `sudo` fallback, `DEBIAN_FRONTEND` inside root script
+- [ ] Verify pkexec flows on a desktop without a polkit agent **(unverified)**
 - [x] `trace.rs`: snapshot diff of `~/.local`, `/opt`, `/usr/local` for scripts and builds
 - [x] `store.rs`: SQLite schema, migrations via `user_version`
 - [x] `library.rs`: scan apt/dnf/zypper/pacman/apk/snap/flatpak installed lists

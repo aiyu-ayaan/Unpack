@@ -23,7 +23,7 @@ fn pump<R: Read + Send + 'static>(r: R, stream: &'static str, tx: mpsc::Sender<(
     })
 }
 
-fn run_command(mut cmd: Command, emit: Emit) -> Result<(), String> {
+fn run_status(mut cmd: Command, emit: Emit) -> Result<std::process::ExitStatus, String> {
     cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
     let mut child = cmd.spawn().map_err(|e| format!("Could not start: {e}"))?;
     let (tx, rx) = mpsc::channel();
@@ -33,8 +33,24 @@ fn run_command(mut cmd: Command, emit: Emit) -> Result<(), String> {
         emit(s, &l);
     }
     let _ = (a.join(), b.join());
-    let st = child.wait().map_err(|e| e.to_string())?;
+    child.wait().map_err(|e| e.to_string())
+}
+
+fn run_command(cmd: Command, emit: Emit) -> Result<(), String> {
+    let st = run_status(cmd, emit)?;
     if st.success() { Ok(()) } else { Err(format!("Command failed ({st})")) }
+}
+
+/// Turn a pkexec exit into a message a new user can act on. pkexec exits 126 when the
+/// password dialog is dismissed and 127 when authorization fails or no polkit agent runs.
+fn pkexec_error(code: Option<i32>, auth_err: bool, sudo_hint: &str) -> String {
+    match code {
+        Some(126) => "The admin password prompt was cancelled. Nothing that needs admin rights was run.".into(),
+        Some(127) if auth_err => format!(
+            "Admin rights were not granted. If no password window appeared, no polkit authentication agent is running in this session.\nRun this in a terminal instead:\n  {sudo_hint}"
+        ),
+        _ => format!("Command failed (exit {})", code.map_or("signal".into(), |c| c.to_string())),
+    }
 }
 
 fn user_cmd(program: &str, args: &[String], cwd: &Option<PathBuf>) -> Command {
@@ -61,17 +77,29 @@ fn run_root(group: &[RootCmd], sys: &System, emit: Emit) -> Result<(), String> {
         .collect();
     let script = parts.join(" && ");
     emit("info", &format!("$ {script}"));
-    let mut cmd;
+    // pkexec clears the environment, so set what package managers need inside the script.
+    let full = format!("export DEBIAN_FRONTEND=noninteractive; {script}");
+    let sudo_hint = format!("sudo sh -c {}", shlex::try_quote(&full).unwrap_or_default());
     if sys.is_root {
-        cmd = Command::new("sh");
-    } else if let Some(pk) = which("pkexec") {
-        cmd = Command::new(pk);
-        cmd.arg("sh");
-    } else {
-        return Err(format!("Admin rights are needed but `pkexec` is missing. Run this in a terminal:\n  sudo sh -c {}", shlex::try_quote(&script).unwrap_or_default()));
+        let mut cmd = Command::new("sh");
+        cmd.args(["-c", &full]);
+        return run_command(cmd, emit);
     }
-    cmd.args(["-c", &script]);
-    run_command(cmd, emit)
+    let Some(pk) = which("pkexec") else {
+        return Err(format!("Admin rights are needed but `pkexec` is missing. Run this in a terminal:\n  {sudo_hint}"));
+    };
+    emit("info", "Waiting for the admin password…");
+    let mut cmd = Command::new(pk);
+    cmd.args(["sh", "-c", &full]);
+    let auth_err = std::cell::Cell::new(false);
+    let watch = |s: &str, l: &str| {
+        if s == "err" && (l.contains("Not authorized") || l.contains("authentication agent") || l.starts_with("Error executing command as another user")) {
+            auth_err.set(true);
+        }
+        emit(s, l);
+    };
+    let st = run_status(cmd, &watch)?;
+    if st.success() { Ok(()) } else { Err(pkexec_error(st.code(), auth_err.get(), &sudo_hint)) }
 }
 
 pub struct Outcome {
@@ -458,6 +486,15 @@ mod tests {
         let mut bad = Command::new("sh");
         bad.args(["-c", "exit 3"]);
         assert!(run_command(bad, &emit).is_err());
+    }
+
+    #[test]
+    fn explains_pkexec_exits() {
+        assert!(pkexec_error(Some(126), false, "sudo x").contains("cancelled"));
+        let denied = pkexec_error(Some(127), true, "sudo x");
+        assert!(denied.contains("not granted") && denied.contains("sudo x"));
+        // 127 without an auth message is the script's own "command not found".
+        assert_eq!(pkexec_error(Some(127), false, "sudo x"), "Command failed (exit 127)");
     }
 
     #[test]
