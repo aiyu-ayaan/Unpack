@@ -137,6 +137,31 @@ def sym(ink, green, small=False):
     return f'<path fill="{ink}" d="{t}"/>\n<rect fill="{green}" {sq}/>'
 
 
+def animated(ls, vb):
+    """Looping lockup for the README: CSS keyframes inside the SVG, theme-aware, 6 s cycle."""
+    T = 6.0
+    p = lambda sec: f"{sec / T * 100:.2f}%"
+    css = [
+        ".t,.l{fill:%s}.s{fill:%s}" % (INK, GREEN),
+        "@media (prefers-color-scheme:dark){.t,.l{fill:%s}.s{fill:%s}}" % (INK_DK, GREEN_DK),
+        ".t,.s,.l{transform-box:fill-box;transform-origin:50%% 100%%;animation-duration:%ss;animation-iteration-count:infinite;animation-fill-mode:both}" % T,
+        ".all{animation:fade %ss infinite}" % T,
+        "@keyframes fade{0%%,%s{opacity:1}100%%{opacity:0}}" % p(5.3),
+        ".t{animation-name:t;animation-timing-function:ease-out}",
+        "@keyframes t{0%%,%s{opacity:0;transform:translateY(-36px) scale(.86)}%s{opacity:1;transform:none}%s{transform:scale(1.03,.95)}%s{transform:scale(.99,1.01)}%s,100%%{transform:none}}"
+        % (p(.1), p(.56), p(.72), p(.86), p(1.3)),
+        ".s{animation-name:s;animation-timing-function:cubic-bezier(.3,1.4,.5,1)}",
+        "@keyframes s{0%%,%s{opacity:0;transform:translateY(64px) scale(.7) rotate(-8deg)}%s,100%%{opacity:1;transform:none}}" % (p(.75), p(1.65)),
+    ]
+    for i in range(len(ls)):
+        a = 1.3 + .07 * i
+        css.append(f".l{i}{{animation-name:l{i};animation-timing-function:cubic-bezier(.2,.8,.2,1)}}"
+                   f"@keyframes l{i}{{0%,{p(a)}{{opacity:0;transform:translateY(26px)}}{p(a + .55)},100%{{opacity:1;transform:none}}}}")
+    body = (f'<g class="all">\n<path class="t" d="{TRAY}"/>\n<rect class="s" {" ".join(f"{k}=\"{v}\"" for k, v in SQUARE.items())}/>\n'
+            + "\n".join(f'<path class="l l{i}" d="{d}"/>' for i, (_, d) in enumerate(ls)) + "\n</g>")
+    return svg(vb, "<style>" + "".join(css) + "</style>\n" + body, "Unpack")
+
+
 def write(name, text):
     (HERE / name).write_text(text)
 
@@ -155,6 +180,8 @@ def main():
     write("unpack-symbol-white.svg", svg((0, 0, 256, 256), sym("#fff", "#fff"), "Unpack symbol, white"))
     write("unpack-lockup.svg", svg(vb_lock, sym(INK, GREEN) + "\n" + wm(INK), "Unpack"))
     write("unpack-lockup-dark.svg", svg(vb_lock, sym(INK_DK, GREEN_DK) + "\n" + wm(INK_DK), "Unpack (for dark backgrounds)"))
+
+    write("unpack-lockup-animated.svg", animated(ls, vb_lock))
 
     # app icon tile: dark squircle, light tray, green square; symbol scaled to ~58% and centred
     sc = 3.1
