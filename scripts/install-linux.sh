@@ -10,7 +10,11 @@
 # itself by replacing that file (app/src-tauri/src/updates.rs). It also gets a menu entry with
 # the app's own icon and an `unpack` command. Re-running it updates.
 #
-# POSIX sh: it is piped into whatever `sh` is, which on Debian and Ubuntu is dash.
+# Works on any x86_64 glibc distro: it checks what the system has, not which distro it is. Without
+# libfuse2 (not installed by default on recent Ubuntu, Debian and Fedora) the AppImage is run in its
+# extract-and-run mode, so nothing has to be installed first. musl systems (Alpine) cannot run it.
+#
+# POSIX sh (also busybox ash): it is piped into whatever `sh` is, which on Debian and Ubuntu is dash.
 set -eu
 
 API="${UNPACK_RELEASES_URL:-https://api.github.com/repos/aiyu-ayaan/Unpack/releases?per_page=100}"
@@ -21,6 +25,7 @@ BIN="$HOME/.local/bin/unpack"
 DESKTOP_FILE="$DATA_HOME/applications/unpack.desktop"
 ICON_PATH="usr/share/icons/hicolor/512x512/apps/unpack.png"
 ICON_FILE="$DATA_HOME/icons/hicolor/512x512/apps/unpack.png"
+WRAPPER_MARK="installed by the Unpack install script"
 
 CHANNEL=stable
 VERSION=""
@@ -49,14 +54,27 @@ refresh_menus() {
 
 if [ "$UNINSTALL" -eq 1 ]; then
   rm -f "$APP" "$APP.part" "$DESKTOP_FILE" "$ICON_FILE"
-  # Only our own link.
-  if [ -L "$BIN" ] && [ "$(readlink "$BIN")" = "$APP" ]; then rm -f "$BIN"; fi
+  # Only our own link or wrapper.
+  if { [ -L "$BIN" ] && [ "$(readlink "$BIN")" = "$APP" ]; } || grep -qs "$WRAPPER_MARK" "$BIN" 2>/dev/null; then rm -f "$BIN"; fi
   refresh_menus
   echo "Unpack is removed. Its history and settings are kept in $DATA_HOME/unpack."
   exit 0
 fi
 
 case "$(uname -m)" in x86_64 | amd64) ;; *) die "Unpack for Linux is built for x86_64 only; this machine is $(uname -m)." ;; esac
+
+# The AppImage is built against glibc. Alpine and other musl systems fail with a cryptic loader error.
+if ldd --version 2>&1 | grep -qi musl; then
+  die "this system uses musl libc (Alpine, Void musl); the Unpack AppImage needs glibc. Build from source instead: see the README."
+fi
+
+has_fuse2() {
+  { PATH="$PATH:/sbin:/usr/sbin" ldconfig -p 2>/dev/null | grep -q 'libfuse\.so\.2'; } && return 0
+  for d in /lib /lib64 /usr/lib /usr/lib64 /lib/x86_64-linux-gnu /usr/lib/x86_64-linux-gnu; do
+    ls "$d"/libfuse.so.2* >/dev/null 2>&1 && return 0
+  done
+  return 1
+}
 
 mkdir -p "$DATA_HOME/unpack"
 trap 'rm -f "$APP.part"' EXIT INT TERM
@@ -126,6 +144,10 @@ else
 fi
 rm -rf "$tmp"
 
+# Without libfuse2 an AppImage cannot mount itself; extract-and-run needs nothing installed.
+EXTRACT=""
+has_fuse2 || EXTRACT=1
+
 # Same fields as the entry Tauri writes into the .deb. The icon is an absolute path so it shows
 # without waiting for the icon theme cache.
 mkdir -p "$(dirname "$DESKTOP_FILE")"
@@ -134,7 +156,7 @@ cat >"$DESKTOP_FILE" <<ENTRY
 Type=Application
 Name=Unpack
 Comment=Install anything on Linux
-Exec="$APP"
+Exec=${EXTRACT:+env APPIMAGE_EXTRACT_AND_RUN=1 }"$APP"
 TryExec=$APP
 Icon=$ICON_FILE
 Terminal=false
@@ -143,10 +165,20 @@ StartupWMClass=unpack
 ENTRY
 refresh_menus
 
+# `unpack` on the command line: a link, or a small wrapper when the AppImage needs extract-and-run.
 mkdir -p "$(dirname "$BIN")"
-if [ ! -e "$BIN" ] || [ -L "$BIN" ]; then ln -sf "$APP" "$BIN"; fi
+if [ ! -e "$BIN" ] || [ -L "$BIN" ] || grep -qs "$WRAPPER_MARK" "$BIN" 2>/dev/null; then
+  rm -f "$BIN"
+  if [ -n "$EXTRACT" ]; then
+    printf '#!/bin/sh\n# %s\nAPPIMAGE_EXTRACT_AND_RUN=1 exec "%s" "$@"\n' "$WRAPPER_MARK" "$APP" >"$BIN"
+    chmod 755 "$BIN"
+  else
+    ln -s "$APP" "$BIN"
+  fi
+fi
 
 echo "Unpack $label is installed: find it in your applications menu, or run 'unpack'."
-if [ ! -e /dev/fuse ]; then
-  echo "warning: FUSE is not available, so Unpack unpacks itself on every start (slower). Install fuse3 with your package manager." >&2
+if [ -n "$EXTRACT" ]; then
+  echo "note: libfuse2 is not installed, so Unpack unpacks itself on every start (a little slower). Installing it ('libfuse2' or 'fuse-libs' with your package manager) makes it start faster." >&2
 fi
+case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) echo "note: add $HOME/.local/bin to your PATH to use the 'unpack' command." >&2 ;; esac
