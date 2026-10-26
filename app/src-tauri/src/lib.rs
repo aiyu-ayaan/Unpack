@@ -9,6 +9,7 @@ pub mod sniff;
 pub mod store;
 pub mod system;
 pub mod trace;
+pub mod updates;
 pub mod util;
 
 use plan::{Plan, Uninstall};
@@ -22,6 +23,8 @@ use tauri::{AppHandle, Emitter, Manager, State};
 struct AppState {
     plans: Mutex<HashMap<String, Plan>>,
     store: Mutex<Store>,
+    /// The last update check's answer; install takes it from here, never from the page.
+    offer: Mutex<Option<updates::Offer>>,
 }
 
 type Shared<'a> = State<'a, Arc<AppState>>;
@@ -145,16 +148,91 @@ async fn uninstall_system(manager: String, ident: String, app: AppHandle) -> Res
     .await?
 }
 
+#[derive(Serialize)]
+struct UpdateInfo {
+    version: &'static str,
+    channel: updates::Channel,
+    /// The AppImage replaces itself; a package is saved and opened instead.
+    self_install: bool,
+    skipped: Option<String>,
+}
+
+#[tauri::command]
+fn update_info() -> UpdateInfo {
+    UpdateInfo { version: updates::version(), channel: updates::channel(), self_install: updates::appimage().is_some(), skipped: updates::load().skipped }
+}
+
+#[tauri::command]
+async fn update_check(state: Shared<'_>) -> Result<Option<updates::Offer>, String> {
+    let offer = blocking(updates::check).await??;
+    *state.offer.lock().map_err(|e| e.to_string())? = offer.clone();
+    Ok(offer)
+}
+
+/// Downloads the offer from the last check (progress arrives as `update-progress`, 0..1, null when over).
+/// Returns where a package was saved, or null when the app is restarting into the new AppImage.
+#[tauri::command]
+async fn update_install(app: AppHandle, state: Shared<'_>) -> Result<Option<String>, String> {
+    let offer = state.offer.lock().map_err(|e| e.to_string())?.clone().ok_or("No update to install. Check again.")?;
+    let handle = app.clone();
+    let done = blocking(move || {
+        let _ = handle.emit("update-progress", 0.0);
+        let r = updates::install(&offer, &|f| {
+            let _ = handle.emit("update-progress", f);
+        });
+        let _ = handle.emit("update-progress", Option::<f64>::None);
+        r
+    })
+    .await??;
+    match done {
+        updates::Installed::Restart(file) => {
+            std::process::Command::new(file).spawn().map_err(|e| format!("Updated, but could not restart: {e}"))?;
+            app.exit(0);
+            Ok(None)
+        }
+        updates::Installed::Opened(file) => Ok(Some(file.display().to_string())),
+    }
+}
+
+#[tauri::command]
+fn update_set_channel(channel: updates::Channel) -> Result<(), String> {
+    let mut s = updates::load();
+    s.channel = Some(channel);
+    updates::save(&s)
+}
+
+/// "Later" on the start-up offer is remembered for that version.
+#[tauri::command]
+fn update_skip(state: Shared<'_>) -> Result<(), String> {
+    let Some(offer) = state.offer.lock().map_err(|e| e.to_string())?.clone() else { return Ok(()) };
+    let mut s = updates::load();
+    s.skipped = Some(offer.version);
+    updates::save(&s)
+}
+
+/// Opens one of our own links in the browser. The page names it; it never sends an address.
+#[tauri::command]
+fn open_link(which: String) -> Result<(), String> {
+    let url = match which.as_str() {
+        "repo" => updates::REPO_URL,
+        "issues" => "https://github.com/aiyu-ayaan/Unpack/issues",
+        "developer" => "https://github.com/aiyu-ayaan",
+        "site" => "https://aiyu.co.in",
+        _ => return Err("Unknown link".into()),
+    };
+    std::process::Command::new("xdg-open").arg(url).spawn().map(|_| ()).map_err(|e| format!("Could not open your browser: {e}"))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
             let store = Store::open(&util::data_dir().join("unpack.db"))?;
-            app.manage(Arc::new(AppState { plans: Mutex::new(HashMap::new()), store: Mutex::new(store) }));
+            app.manage(Arc::new(AppState { plans: Mutex::new(HashMap::new()), store: Mutex::new(store), offer: Mutex::new(None) }));
             std::thread::spawn(analyze::clean_old_work);
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![detect_system, analyze, execute, list_apps, history, scan_system, uninstall_app, uninstall_system])
+        .invoke_handler(tauri::generate_handler![detect_system, analyze, execute, list_apps, history, scan_system, uninstall_app, uninstall_system, update_info, update_check, update_install, update_set_channel, update_skip, open_link])
         .run(tauri::generate_context!())
         .expect("error while running Unpack");
 }
