@@ -151,7 +151,7 @@ pub fn run(plan: &Plan, as_root: bool, sys: &System, emit: Emit) -> Result<Outco
                     created.push(dest.to_string_lossy().into());
                 }
             }
-            Action::IntegrateAppImage { src, name } => created.extend(integrate_appimage(src, name, emit)?),
+            Action::IntegrateAppImage { src, name, no_sandbox } => created.extend(integrate_appimage(src, name, *no_sandbox, emit)?),
             Action::InstallPortable { from, name } => created.extend(install_portable(from, name, emit)?),
             Action::InstallBinary { src, name } => created.extend(install_binary(src, name, emit)?),
             Action::InstallBuilt { dirs, ext } => {
@@ -236,7 +236,7 @@ fn exec_quote(p: &Path) -> String {
 }
 
 /// Rewrite the app's own .desktop so Exec/Icon point at our copies.
-pub fn rewrite_desktop(text: &str, exec: &Path, icon: Option<&Path>) -> String {
+pub fn rewrite_desktop(text: &str, exec: &Path, icon: Option<&Path>, flags: &str) -> String {
     let mut out = vec![];
     let mut in_entry = false;
     for l in text.lines() {
@@ -248,7 +248,8 @@ pub fn rewrite_desktop(text: &str, exec: &Path, icon: Option<&Path>) -> String {
         }
         if in_entry && l.starts_with("Exec=") {
             let rest = l["Exec=".len()..].split_once(' ').map(|(_, r)| format!(" {r}")).unwrap_or_default();
-            out.push(format!("Exec={}{rest}", exec_quote(exec)));
+            let flags = if flags.is_empty() || rest.contains(flags) { String::new() } else { format!(" {flags}") };
+            out.push(format!("Exec={}{flags}{rest}", exec_quote(exec)));
         } else if in_entry && l.starts_with("Icon=") && icon.is_some() {
             out.push(format!("Icon={}", icon.expect("checked").display()));
         } else {
@@ -259,11 +260,12 @@ pub fn rewrite_desktop(text: &str, exec: &Path, icon: Option<&Path>) -> String {
     out.join("\n")
 }
 
-fn minimal_desktop(name: &str, exec: &Path) -> String {
-    format!("[Desktop Entry]\nType=Application\nName={name}\nExec={}\nTerminal=false\nCategories=Utility;\n", exec_quote(exec))
+fn minimal_desktop(name: &str, exec: &Path, flags: &str) -> String {
+    let flags = if flags.is_empty() { String::new() } else { format!(" {flags}") };
+    format!("[Desktop Entry]\nType=Application\nName={name}\nExec={}{flags}\nTerminal=false\nCategories=Utility;\n", exec_quote(exec))
 }
 
-fn integrate_appimage(src: &Path, name: &str, emit: Emit) -> Result<Vec<String>, String> {
+fn integrate_appimage(src: &Path, name: &str, no_sandbox: bool, emit: Emit) -> Result<Vec<String>, String> {
     let file = src.file_name().ok_or("bad file name")?;
     let dest_dir = home().join("Applications");
     std::fs::create_dir_all(&dest_dir).map_err(|e| e.to_string())?;
@@ -306,7 +308,8 @@ fn integrate_appimage(src: &Path, name: &str, emit: Emit) -> Result<Vec<String>,
     if let Some(i) = &icon {
         created.push(i.to_string_lossy().into());
     }
-    let body = text.map(|t| rewrite_desktop(&t, &dest, icon.as_deref())).unwrap_or_else(|| minimal_desktop(name, &dest));
+    let flags = if no_sandbox { "--no-sandbox" } else { "" };
+    let body = text.map(|t| rewrite_desktop(&t, &dest, icon.as_deref(), flags)).unwrap_or_else(|| minimal_desktop(name, &dest, flags));
     let dpath = desktop_path(name);
     std::fs::create_dir_all(dpath.parent().expect("has parent")).map_err(|e| e.to_string())?;
     std::fs::write(&dpath, body).map_err(|e| e.to_string())?;
@@ -365,7 +368,7 @@ fn install_portable(from: &Path, name: &str, emit: Emit) -> Result<Vec<String>, 
     }
     let dpath = desktop_path(name);
     std::fs::create_dir_all(dpath.parent().expect("has parent")).map_err(|e| e.to_string())?;
-    std::fs::write(&dpath, minimal_desktop(name, &exe)).map_err(|e| e.to_string())?;
+    std::fs::write(&dpath, minimal_desktop(name, &exe, "")).map_err(|e| e.to_string())?;
     created.push(dpath.to_string_lossy().into());
     refresh_menu();
     Ok(created)
@@ -467,11 +470,21 @@ mod tests {
     #[test]
     fn rewrites_desktop() {
         let t = "[Desktop Entry]\nName=App\nExec=AppRun %U\nIcon=app\nTryExec=AppRun\n[Desktop Action x]\nExec=other\n";
-        let out = rewrite_desktop(t, Path::new("/home/u/Applications/App.AppImage"), Some(Path::new("/i/app.png")));
+        let out = rewrite_desktop(t, Path::new("/home/u/Applications/App.AppImage"), Some(Path::new("/i/app.png")), "");
         assert!(out.contains("Exec=\"/home/u/Applications/App.AppImage\" %U"));
         assert!(out.contains("Icon=/i/app.png"));
         assert!(!out.contains("TryExec"));
         assert!(out.contains("Exec=other"));
+    }
+
+    #[test]
+    fn desktop_gets_no_sandbox_once() {
+        let t = "[Desktop Entry]\nExec=AppRun %U\n";
+        let out = rewrite_desktop(t, Path::new("/a/B.AppImage"), None, "--no-sandbox");
+        assert!(out.contains("Exec=\"/a/B.AppImage\" --no-sandbox %U"), "{out}");
+        let again = rewrite_desktop("[Desktop Entry]\nExec=AppRun --no-sandbox %U\n", Path::new("/a/B.AppImage"), None, "--no-sandbox");
+        assert_eq!(again.matches("--no-sandbox").count(), 1);
+        assert!(minimal_desktop("B", Path::new("/a/B.AppImage"), "--no-sandbox").contains("Exec=\"/a/B.AppImage\" --no-sandbox\n"));
     }
 
     #[test]

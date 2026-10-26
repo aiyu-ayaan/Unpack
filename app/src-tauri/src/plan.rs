@@ -10,7 +10,8 @@ use std::path::{Path, PathBuf};
 pub enum Action {
     Cmd { program: String, args: Vec<String>, cwd: Option<PathBuf> },
     Extract { archive: PathBuf, fmt: Archive, dest: PathBuf },
-    IntegrateAppImage { src: PathBuf, name: String },
+    /// `no_sandbox`: the menu entry starts the app with `--no-sandbox` (Electron on a system that blocks its sandbox).
+    IntegrateAppImage { src: PathBuf, name: String, no_sandbox: bool },
     InstallPortable { from: PathBuf, name: String },
     InstallBinary { src: PathBuf, name: String },
     /// Find a package produced by an earlier build step and install it natively.
@@ -257,14 +258,25 @@ fn plan_package(path: &Path, kind: Kind, sys: &System) -> Plan {
     let mut p = Plan::new(&format!("{kind:?}"), &fname, "");
     match kind {
         Kind::Deb => {
-            let info = capture("dpkg-deb", &["-f", &abs, "Package", "Version", "Architecture"]).unwrap_or_default();
-            let name = field(&info, "Package:").unwrap_or(fname);
-            p.name = name.clone();
-            p.version = field(&info, "Version:");
+            let info = capture("dpkg-deb", &["-f", &abs, "Package", "Version", "Architecture"]);
             if sys.native != Some(Native::Apt) {
+                p.name = fname;
                 unsupported_foreign(&mut p, "A .deb package", sys, "a different package format");
                 return p;
             }
+            // Without the package name the uninstall record would be wrong, so never guess it from the file name.
+            let info = match info {
+                Ok(i) if field(&i, "Package:").is_some() => i,
+                other => {
+                    p.name = fname;
+                    let why = other.err().unwrap_or_else(|| "it has no Package field".into());
+                    p.refuse(&format!("Could not read this package: {why}"), &["Download the file again; it may be incomplete or not a .deb."]);
+                    return p;
+                }
+            };
+            let name = field(&info, "Package:").unwrap_or_default();
+            p.name = name.clone();
+            p.version = field(&info, "Version:");
             if let Some(a) = field(&info, "Architecture:") {
                 if !arch_ok(&a) {
                     p.refuse(&format!("This package is built for {a}, but this computer is {}.", host_deb_arch()), &["Download the version for your CPU."]);
@@ -430,6 +442,34 @@ fn fuse2_package(native: Native) -> &'static str {
     }
 }
 
+/// Byte offset of the squashfs inside a type 2 AppImage: the end of the ELF section header table.
+fn appimage_offset(path: &Path) -> Option<u64> {
+    use std::io::Read;
+    let mut h = [0u8; 64];
+    std::fs::File::open(path).ok()?.read_exact(&mut h).ok()?;
+    if !h.starts_with(b"\x7fELF") || h[4] != 2 {
+        return None;
+    }
+    let shoff = u64::from_le_bytes(h[0x28..0x30].try_into().ok()?);
+    let shentsize = u16::from_le_bytes(h[0x3A..0x3C].try_into().ok()?) as u64;
+    let shnum = u16::from_le_bytes(h[0x3C..0x3E].try_into().ok()?) as u64;
+    Some(shoff + shentsize * shnum)
+}
+
+/// Electron and Chromium apps carry a `chrome-sandbox` helper. Listing the image does not run it.
+fn is_electron(path: &Path) -> bool {
+    let Some(off) = appimage_offset(path) else { return false };
+    has("unsquashfs") && capture("unsquashfs", &["-o", &off.to_string(), "-l", &path.to_string_lossy()]).is_ok_and(|l| l.lines().any(|l| l.ends_with("/chrome-sandbox")))
+}
+
+/// True when unprivileged user namespaces, which Chromium's sandbox needs, are switched off or restricted.
+fn userns_blocked() -> bool {
+    let read = |p: &str| std::fs::read_to_string(p).ok().map(|s| s.trim().to_string());
+    read("/proc/sys/kernel/apparmor_restrict_unprivileged_userns").as_deref() == Some("1")
+        || read("/proc/sys/kernel/unprivileged_userns_clone").as_deref() == Some("0")
+        || read("/proc/sys/user/max_user_namespaces").as_deref() == Some("0")
+}
+
 fn plan_appimage(p: &mut Plan, path: &Path, sys: &System) {
     let name = file_stem(path);
     p.name = name.clone();
@@ -446,7 +486,11 @@ fn plan_appimage(p: &mut Plan, path: &Path, sys: &System) {
             None => p.warnings.push("FUSE 2 may be missing; the AppImage may not start.".into()),
         }
     }
-    p.step("Add to app menu", false, Action::IntegrateAppImage { src: path.to_path_buf(), name });
+    let no_sandbox = is_electron(path) && userns_blocked();
+    if no_sandbox {
+        p.warnings.push("This app is built on Electron, and this system does not let ordinary programs create the user namespace that Chromium's sandbox needs (AppArmor `apparmor_restrict_unprivileged_userns`). It would crash at start. The menu entry will launch it with `--no-sandbox`, which turns that sandbox off for this app. Only continue if you trust it.".into());
+    }
+    p.step("Add to app menu", false, Action::IntegrateAppImage { src: path.to_path_buf(), name, no_sandbox });
     p.uninstall = Uninstall::Traced;
 }
 
@@ -770,6 +814,23 @@ pub fn family_hint(f: Family) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn appimage_offset_is_the_end_of_the_section_headers() {
+        let d = tempfile::tempdir().unwrap();
+        let f = d.path().join("a.AppImage");
+        let mut h = vec![0u8; 64];
+        h[..4].copy_from_slice(b"\x7fELF");
+        h[4] = 2;
+        h[0x28..0x30].copy_from_slice(&1000u64.to_le_bytes());
+        h[0x3A..0x3C].copy_from_slice(&64u16.to_le_bytes());
+        h[0x3C..0x3E].copy_from_slice(&5u16.to_le_bytes());
+        std::fs::write(&f, &h).unwrap();
+        assert_eq!(appimage_offset(&f), Some(1000 + 64 * 5));
+        std::fs::write(&f, b"not an elf").unwrap();
+        assert_eq!(appimage_offset(&f), None);
+    }
+
     use crate::system::detect;
 
     fn fake(native: Option<Native>) -> System {
