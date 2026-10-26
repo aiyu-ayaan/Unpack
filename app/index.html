@@ -6,8 +6,23 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>Unpack</title>
     <script src="/theme.js"></script>
+    <style>
+      #boot { position: fixed; inset: 0; z-index: 50; display: grid; place-content: center; justify-items: center; gap: 20px; background: var(--bg, #1f1f1f); transition: opacity .3s; }
+      #boot.out { opacity: 0; pointer-events: none; }
+      #boot svg { width: 360px; max-width: 70vw; }
+      #boot p { margin: 0; font: 14px system-ui, sans-serif; color: var(--dim, #9d9d9d); }
+      #boot .lg-tray, #boot .lg-let { fill: var(--strong, #e7e7e7); }
+      #boot .lg-sq { fill: var(--accent-ink, #3fb950); }
+    </style>
   </head>
   <body>
+    <!-- Start-up splash: plays from first paint; src/components/Splash.tsx times its exit. -->
+    <div id="boot">
+      <div data-tauri-drag-region style="position: absolute; inset: 0 0 auto; height: 36px"></div>
+      <!--boot-logo-->
+      <span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%)">Unpack</span>
+      <p class="splash-tag">Install anything on Linux</p>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

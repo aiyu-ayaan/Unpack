@@ -30,7 +30,7 @@ These match the app theme tokens (`--strong`, `--accent`, `--accent-ink`). In th
 - Do not stretch, recolour the tray green, rotate, add shadows or outlines.
 
 ## Motion
-Same sequence in the splash (`Splash.tsx`, `logo.css`) and the README SVG (about 2.3 s, then hold):
+Same sequence in the splash (markup in `app/index.html`, filled by the `boot-logo` plugin in `vite.config.ts`; `Splash.tsx` closes it; `logo.css`) and the README SVG (about 2.3 s, then hold):
 1. Tray drops in and settles (0.1 s).
 2. Square rises out of the tray, overshoots, settles; the tray squashes slightly (0.75 s).
 3. Letters rise in one by one, 70 ms apart (1.3 s).
