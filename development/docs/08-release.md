@@ -43,7 +43,9 @@ By hand: Actions → Release → Run workflow, with mode `pr` and a marker, `rel
 `scripts/set-version.mjs <version>` (run by the release PR) writes it to `app/package.json`, `app/src-tauri/tauri.conf.json`, `app/src-tauri/Cargo.toml` and `Cargo.lock`. Never edit these by hand for a release. The app reads it from `CARGO_PKG_VERSION` (Settings, update check); the bundle file names come from `tauri.conf.json`.
 
 ## What a release contains
-`pnpm tauri build --bundles deb,rpm,appimage` on `ubuntu-22.04` (x86_64) and `ubuntu-22.04-arm` (aarch64), the oldest supported runners so the AppImage runs on more distros, after `pnpm test`. The arm runner is free only for public repositories **(unverified on a real run)**. The build fails before publishing if the AppImage or deb is not named `*_<version>_amd64.*` / `*_<version>_aarch64.AppImage` and `*_<version>_arm64.deb`, because the updater finds them by that name (see [07-updates.md](07-updates.md)). Alpha and beta releases are marked *pre-release* on GitHub. Notes are the `## vX` section of `CHANGELOG.md`, built from the commit subjects since the last tag; edit it in the release PR if it reads badly.
+`pnpm tauri build --bundles deb,appimage` (plus `rpm` on stable releases only: an rpm version cannot contain `-`, found by running the pipeline locally) on `ubuntu-22.04` (x86_64) and `ubuntu-22.04-arm` (aarch64), the oldest supported runners so the AppImage runs on more distros, after `pnpm test`. The arm runner is free only for public repositories **(unverified on a real run)**. The build fails before publishing if the AppImage or deb is not named `*_<version>_amd64.*` / `*_<version>_aarch64.AppImage` and `*_<version>_arm64.deb`, because the updater finds them by that name (see [07-updates.md](07-updates.md)). Alpha and beta releases are marked *pre-release* on GitHub. Notes are the `## vX` section of `CHANGELOG.md`, built from the commit subjects since the last tag; edit it in the release PR if it reads badly.
+
+Alpine (musl) gets its own job, `build-musl`: `scripts/build-musl.sh` runs in an `alpine:3.24` container and produces `Unpack_<version>_<arch>-musl.tar.gz` (the binary and its icon), which `scripts/install-linux.sh` downloads on musl systems.
 
 ## One-time repository setup
 - Settings → Actions → General → **Allow GitHub Actions to create and approve pull requests** (or add a `RELEASE_TOKEN` secret with a personal access token).
@@ -51,5 +53,5 @@ By hand: Actions → Release → Run workflow, with mode `pr` and a marker, `rel
 
 ## Not yet checked
 - The workflow has been linted and its version logic self-tested, but never run on GitHub **(unverified)**.
-- Whether tauri accepts a pre-release version such as `0.0.1-alpha.1` in the `.rpm` name and metadata **(unverified)**. If the rpm bundle fails, drop `rpm` from `--bundles` and the updater's rpm branch simply finds nothing.
+- Pre-release versions such as `0.0.1-alpha.1` work for the `.deb` and AppImage but not the `.rpm` (the bundler rejects `-`), so alpha and beta releases have no rpm and rpm systems only see updates once a stable release exists.
 - Bundles are unsigned; see the limits in `07-updates.md`.
