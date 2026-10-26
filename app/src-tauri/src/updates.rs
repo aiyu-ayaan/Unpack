@@ -8,7 +8,6 @@ use crate::util;
 use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 pub const REPO_URL: &str = "https://github.com/aiyu-ayaan/Unpack";
 const RELEASES: &str = "https://api.github.com/repos/aiyu-ayaan/Unpack/releases?per_page=30";
@@ -168,7 +167,7 @@ pub enum Installed {
 }
 
 fn downloads_dir() -> PathBuf {
-    let from_xdg = Command::new("xdg-user-dir").arg("DOWNLOAD").output().ok().filter(|o| o.status.success());
+    let from_xdg = crate::util::command("xdg-user-dir").arg("DOWNLOAD").output().ok().filter(|o| o.status.success());
     from_xdg
         .map(|o| PathBuf::from(String::from_utf8_lossy(&o.stdout).trim()))
         .filter(|p| p.is_dir() && p != &util::home())
@@ -201,7 +200,7 @@ pub fn install(offer: &Offer, progress: &dyn Fn(f64)) -> Result<Installed, Strin
     if own.is_some() {
         return Ok(Installed::Restart(target));
     }
-    Command::new("xdg-open").arg(&target).spawn().map_err(|e| format!("Saved to {} but could not open it: {e}", target.display()))?;
+    crate::util::command("xdg-open").arg(&target).spawn().map_err(|e| format!("Saved to {} but could not open it: {e}", target.display()))?;
     Ok(Installed::Opened(target))
 }
 

@@ -186,7 +186,7 @@ async fn update_install(app: AppHandle, state: Shared<'_>) -> Result<Option<Stri
     .await??;
     match done {
         updates::Installed::Restart(file) => {
-            std::process::Command::new(file).spawn().map_err(|e| format!("Updated, but could not restart: {e}"))?;
+            util::command(file).spawn().map_err(|e| format!("Updated, but could not restart: {e}"))?;
             app.exit(0);
             Ok(None)
         }
@@ -220,7 +220,7 @@ fn open_link(which: String) -> Result<(), String> {
         "site" => "https://aiyu.co.in",
         _ => return Err("Unknown link".into()),
     };
-    std::process::Command::new("xdg-open").arg(url).spawn().map(|_| ()).map_err(|e| format!("Could not open your browser: {e}"))
+    util::command("xdg-open").arg(url).spawn().map(|_| ()).map_err(|e| format!("Could not open your browser: {e}"))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

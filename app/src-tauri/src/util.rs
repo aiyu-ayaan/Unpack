@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::ffi::OsStr;
 use std::process::Command;
 
 /// Dirs a GUI-launched process may be missing from PATH.
@@ -39,9 +40,39 @@ pub fn cache_dir() -> PathBuf {
     xdg("XDG_CACHE_HOME", ".cache").join("unpack")
 }
 
+/// Variables the AppImage points at its bundled libraries and data. Handed on, they make host tools
+/// (`dpkg-deb`, `apt-get`, `xdg-open`, an installed AppImage) load the wrong libraries and fail.
+const BUNDLE_VARS: [&str; 9] = [
+    "LD_LIBRARY_PATH", "PATH", "XDG_DATA_DIRS", "GTK_PATH", "GIO_EXTRA_MODULES", "GDK_PIXBUF_MODULE_FILE", "GDK_PIXBUF_MODULEDIR",
+    "GI_TYPELIB_PATH", "GSETTINGS_SCHEMA_DIR",
+];
+
+/// `value` without the entries inside `appdir`; `None` when nothing is left.
+fn without_appdir(value: &str, appdir: &str) -> Option<String> {
+    let kept: Vec<&str> = value.split(':').filter(|p| !p.is_empty() && !p.starts_with(appdir)).collect();
+    (!kept.is_empty()).then(|| kept.join(":"))
+}
+
+/// A `Command` for a program on the host. Use this, not `Command::new`, for everything the app runs.
+pub fn command(program: impl AsRef<OsStr>) -> Command {
+    let mut c = Command::new(program);
+    if let Some(appdir) = std::env::var_os("APPDIR") {
+        let appdir = appdir.to_string_lossy();
+        for var in BUNDLE_VARS {
+            if let Ok(v) = std::env::var(var) {
+                match without_appdir(&v, &appdir) {
+                    Some(kept) => c.env(var, kept),
+                    None => c.env_remove(var),
+                };
+            }
+        }
+    }
+    c
+}
+
 /// Run a command to completion and return stdout when it exits 0.
 pub fn capture(program: &str, args: &[&str]) -> Result<String, String> {
-    let out = Command::new(program)
+    let out = command(program)
         .args(args)
         .env("LC_ALL", "C")
         .output()
@@ -66,6 +97,19 @@ pub fn now() -> i64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::without_appdir;
+
+    #[test]
+    fn bundle_entries_are_dropped_and_host_entries_kept() {
+        let v = "/tmp/.mount_X/usr/lib/:/tmp/.mount_X/lib64/:/usr/local/lib";
+        assert_eq!(without_appdir(v, "/tmp/.mount_X").as_deref(), Some("/usr/local/lib"));
+        assert_eq!(without_appdir("/tmp/.mount_X/usr/lib/:", "/tmp/.mount_X"), None);
+        assert_eq!(without_appdir("/usr/bin:/bin", "/tmp/.mount_X").as_deref(), Some("/usr/bin:/bin"));
+    }
 }
 
 /// Tests that change HOME must hold this so others reading it don't race.

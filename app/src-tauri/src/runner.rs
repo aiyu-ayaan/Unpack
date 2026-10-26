@@ -54,7 +54,7 @@ fn pkexec_error(code: Option<i32>, auth_err: bool, sudo_hint: &str) -> String {
 }
 
 fn user_cmd(program: &str, args: &[String], cwd: &Option<PathBuf>) -> Command {
-    let mut c = Command::new(program);
+    let mut c = crate::util::command(program);
     c.args(args).env("DEBIAN_FRONTEND", "noninteractive");
     if let Some(d) = cwd {
         c.current_dir(d);
@@ -81,7 +81,7 @@ fn run_root(group: &[RootCmd], sys: &System, emit: Emit) -> Result<(), String> {
     let full = format!("export DEBIAN_FRONTEND=noninteractive; {script}");
     let sudo_hint = format!("sudo sh -c {}", shlex::try_quote(&full).unwrap_or_default());
     if sys.is_root {
-        let mut cmd = Command::new("sh");
+        let mut cmd = crate::util::command("sh");
         cmd.args(["-c", &full]);
         return run_command(cmd, emit);
     }
@@ -89,7 +89,7 @@ fn run_root(group: &[RootCmd], sys: &System, emit: Emit) -> Result<(), String> {
         return Err(format!("Admin rights are needed but `pkexec` is missing. Run this in a terminal:\n  {sudo_hint}"));
     };
     emit("info", "Waiting for the admin password…");
-    let mut cmd = Command::new(pk);
+    let mut cmd = crate::util::command(pk);
     cmd.args(["sh", "-c", &full]);
     let auth_err = std::cell::Cell::new(false);
     let watch = |s: &str, l: &str| {
@@ -227,7 +227,7 @@ fn desktop_path(name: &str) -> PathBuf {
 
 fn refresh_menu() {
     if has("update-desktop-database") {
-        let _ = Command::new("update-desktop-database").arg(home().join(".local/share/applications")).output();
+        let _ = crate::util::command("update-desktop-database").arg(home().join(".local/share/applications")).output();
     }
 }
 
@@ -278,7 +278,7 @@ fn integrate_appimage(src: &Path, name: &str, emit: Emit) -> Result<Vec<String>,
 
     let tmp = tempfile::tempdir_in(ensure_cache()?).map_err(|e| e.to_string())?;
     let extract = |pat: &str| {
-        let _ = Command::new(&dest).args(["--appimage-extract", pat]).current_dir(tmp.path()).stdin(Stdio::null()).output();
+        let _ = crate::util::command(&dest).args(["--appimage-extract", pat]).current_dir(tmp.path()).stdin(Stdio::null()).output();
     };
     extract("*.desktop");
     extract(".DirIcon");
@@ -338,7 +338,7 @@ fn install_portable(from: &Path, name: &str, emit: Emit) -> Result<Vec<String>, 
         return Err(format!("{} already exists", dest.display()));
     }
     std::fs::create_dir_all(dest.parent().expect("has parent")).map_err(|e| e.to_string())?;
-    run_command({ let mut c = Command::new("mv"); c.arg(from).arg(&dest); c }, emit)?;
+    run_command({ let mut c = crate::util::command("mv"); c.arg(from).arg(&dest); c }, emit)?;
     let mut exes: Vec<PathBuf> = walkdir::WalkDir::new(&dest)
         .max_depth(2)
         .into_iter()
@@ -478,12 +478,12 @@ mod tests {
     fn runs_and_streams() {
         let lines = std::sync::Mutex::new(vec![]);
         let emit = |s: &str, l: &str| lines.lock().unwrap().push(format!("{s}:{l}"));
-        let mut c = Command::new("sh");
+        let mut c = crate::util::command("sh");
         c.args(["-c", "echo a; echo b >&2"]);
         run_command(c, &emit).unwrap();
         let got = lines.lock().unwrap().clone();
         assert!(got.contains(&"out:a".to_string()) && got.contains(&"err:b".to_string()));
-        let mut bad = Command::new("sh");
+        let mut bad = crate::util::command("sh");
         bad.args(["-c", "exit 3"]);
         assert!(run_command(bad, &emit).is_err());
     }

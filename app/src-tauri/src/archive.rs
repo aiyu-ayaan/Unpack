@@ -2,7 +2,6 @@ use crate::sniff::Archive;
 use crate::util::{capture, has};
 use serde::Serialize;
 use std::path::{Component, Path};
-use std::process::Command;
 
 pub const MAX_MEMBERS: usize = 200_000;
 
@@ -62,7 +61,7 @@ pub fn extract(path: &Path, fmt: Archive, dest: &Path) -> Result<(), String> {
         if !has(prog) {
             continue;
         }
-        let mut cmd = Command::new(prog);
+        let mut cmd = crate::util::command(prog);
         cmd.args(&pre);
         match (prog, fmt) {
             ("7z" | "7zz", _) => cmd.arg(format!("-o{d}")).arg(&p),
@@ -91,7 +90,7 @@ fn decompress_single(path: &Path, fmt: Archive, dest: &Path) -> Result<(), Strin
     let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
     let out_name = name.strip_suffix(strip).filter(|s| !s.is_empty()).unwrap_or("decompressed");
     let out = std::fs::File::create(dest.join(out_name)).map_err(|e| e.to_string())?;
-    let st = Command::new(prog).args(["-dc"]).arg(path).stdout(out).status().map_err(|e| e.to_string())?;
+    let st = crate::util::command(prog).args(["-dc"]).arg(path).stdout(out).status().map_err(|e| e.to_string())?;
     if st.success() { Ok(()) } else { Err(format!("{prog} failed")) }
 }
 
@@ -188,6 +187,7 @@ pub fn classify(rel: &[String]) -> Content {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::process::Command;
 
     fn v(items: &[&str]) -> Vec<String> {
         items.iter().map(|s| s.to_string()).collect()
