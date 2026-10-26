@@ -35,6 +35,12 @@ Progress: [`development/TODO.md`](development/TODO.md).
 > end to end on a real Debian, Fedora, openSUSE, Arch or Alpine machine; see M5 in the TODO. Facts not yet
 > checked on a real system are marked **(unverified)** in the docs.
 
+## Walkthrough
+
+<p align="center"><img src="res/unpack.gif" alt="Unpack walkthrough" width="270" /></p>
+
+Full film (43 s, 1440x2560): [`Unpack.mp4`](Unpack.mp4).
+
 ## How it fits together
 
 ```mermaid
