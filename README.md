@@ -7,7 +7,6 @@
 ![SQLite](https://img.shields.io/badge/database-SQLite-003B57?logo=sqlite&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Linux-informational?logo=linux&logoColor=white)
 ![Theme](https://img.shields.io/badge/theme-VS%20Code%20style%20%7C%20light%20%2B%20dark-238636)
-![Status](https://img.shields.io/badge/status-early%20%7C%20not%20yet%20tested%20on%20real%20distros-orange)
 
 Install anything on Linux. Drop in a package, archive, script, git address or a pasted `curl` / `wget`
 command; Unpack works out what it is, builds a plan for your distro, shows it to you, runs it, tracks it in
@@ -224,7 +223,7 @@ The full list is in [`development/TODO.md`](development/TODO.md).
 
 ## License
 
-No license has been chosen yet.
+[MIT](LICENSE) © 2026 aiyu-ayaan.
 
 ## Tests
 
