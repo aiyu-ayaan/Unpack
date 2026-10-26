@@ -15,7 +15,7 @@ Unpack is a Linux desktop app: drop in a package, archive, script, git URL, or p
 ## Commands
 Run from the repo root (a pnpm workspace; root scripts forward to `app/`):
 - `pnpm install` — frontend deps
-- `pnpm tauri dev` — run the app
+- `pnpm dev` — run the app (starts Vite and the desktop window); `pnpm dev:web` — frontend only
 - `pnpm build` — type-check + build frontend
 - `pnpm tauri build --bundles deb` — release `.deb` (bundle category must be a valid freedesktop one, e.g. `Utility`)
 - `pnpm test` — backend tests, `cargo test` (must pass before committing Rust changes)

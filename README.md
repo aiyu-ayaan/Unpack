@@ -146,13 +146,13 @@ sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev
 
 ```bash
 pnpm install
-pnpm tauri dev         # starts Vite on http://localhost:1420 and the desktop window
+pnpm dev                # starts Vite on http://localhost:1420 and the desktop window
 ```
 
-Run everything from the repo root; it is a pnpm workspace and the scripts forward to `app/`. The debug
-binary loads `http://localhost:1420`, so the dev server must be running first. Other commands:
+Run everything from the repo root; it is a pnpm workspace and the scripts forward to `app/`. `pnpm dev` starts the dev server itself. Other commands:
 
 ```bash
+pnpm dev:web                     # frontend only, in a browser
 pnpm build                       # type-check and build the frontend
 pnpm tauri build --bundles deb   # release .deb (also: rpm, appimage)
 pnpm test                        # backend tests (cargo test)

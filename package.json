@@ -2,7 +2,8 @@
   "name": "unpack-workspace",
   "private": true,
   "scripts": {
-    "dev": "pnpm --filter unpack dev",
+    "dev": "pnpm --filter unpack tauri dev",
+    "dev:web": "pnpm --filter unpack dev",
     "build": "pnpm --filter unpack build",
     "tauri": "pnpm --filter unpack tauri",
     "test": "cargo test --manifest-path app/src-tauri/Cargo.toml",
