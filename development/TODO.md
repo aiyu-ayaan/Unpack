@@ -42,6 +42,11 @@ Legend: `[x]` done, `[ ]` open, `[~]` partly done. Update this file in the same 
 - [x] Empty/error states in plain language (target: first-time Linux user)
 - [x] Brand: tray logo, wordmark, lockups, app icons, animated README logo (`docs/06-brand.md`)
 - [x] Animated start-up splash, logo in titlebar and favicon
+- [x] Removed the single-tab strip; layout fills the window
+- [x] Settings view: updates (channel, check, download), about, developer, credits
+- [x] Self-update (`updates.rs`): GitHub releases, channels, AppImage self-replace, package download + `xdg-open`, offer at start
+- [ ] Release workflow that publishes `Unpack_<ver>_amd64.AppImage/.deb` and `.rpm` under tags `0.2.0`, `0.2.0-beta.1`, `0.2.0-alpha.1` (`docs/07-updates.md`)
+- [ ] Verify the AppImage self-replace and the `.deb` hand-off on a real system **(unverified)**
 - [ ] Check icon in a real GNOME/KDE launcher and the built `.deb` **(unverified)**
 
 ## M4 — Format completeness

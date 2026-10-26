@@ -107,8 +107,11 @@ DB path: `$XDG_DATA_HOME/unpack/unpack.db` (default `~/.local/share/unpack/`). S
 | `scan_system()` | Packages the system managers report (read-only) |
 | `uninstall_app(app_id)` | Run the stored `Uninstall` spec, mark row `removed` |
 | `uninstall_system(manager, ident)` | Remove a package Unpack did not install (name is validated) |
+| `update_info()` / `update_check()` | Installed version, channel; look for a newer release (see [07-updates.md](07-updates.md)) |
+| `update_install()` / `update_set_channel(c)` / `update_skip()` | Download the offer from the last check; remember channel; remember "Later" |
+| `open_link(which)` | Open one of Unpack's own links (`repo`, `issues`, `developer`, `site`); the page never sends an address |
 
-Events: `plan-log {plan_id, stream, line}` (`plan_id` is `"uninstall"` during removals), `plan-done <plan_id>`.
+Events: `plan-log {plan_id, stream, line}` (`plan_id` is `"uninstall"` during removals), `plan-done <plan_id>`, `update-progress <0..1 | null>`.
 
 ## Implementation notes (as built)
 

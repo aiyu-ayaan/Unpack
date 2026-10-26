@@ -21,6 +21,7 @@ SQLite, and can uninstall it later. Made for people new to Linux, who should not
 - **Live progress**: per-step install progress, an Output panel that streams as it runs, and a status bar with the running task
 - **One admin prompt**: root steps are merged into a single `pkexec` call; if no password window can appear, Unpack shows the exact `sudo` command to run instead
 - **Tracked and reversible**: every install records how to remove it; the Library also lists packages you installed some other way
+- **Updates**: checks GitHub releases on a stable, beta or alpha channel; an AppImage updates itself, a `.deb`/`.rpm` is downloaded and opened in your installer
 - **History** of everything Unpack did and when
 - **Safe by design**: the UI never sends command lines, archives are checked for path traversal, files are re-hashed before running, and `--allow-untrusted` style flags are never passed silently
 - **Familiar, quiet look**: VS Code style window with its own draggable titlebar, activity bar, tabs and status bar; light and dark; an animated start-up logo and animations that respect *reduced motion*
