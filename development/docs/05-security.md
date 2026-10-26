@@ -27,6 +27,9 @@ Unpack installs untrusted software for non-expert users, so the app itself must 
 | Privilege escalation via helper | v1 uses `pkexec` with fixed commands built in backend. v2 helper accepts only a closed verb set |
 | Compromised update source | Update checks are notification-only until signature verification exists |
 | UI XSS (Tauri webview) | Strict CSP, no remote content, no `dangerouslySetInnerHTML`, Tauri capabilities restricted to the commands we define |
+| Electron AppImage blocked by the OS sandbox rules | Detected from the image listing (`chrome-sandbox`, never run) plus `apparmor_restrict_unprivileged_userns`; the plan warns, and only then does the menu entry add `--no-sandbox` |
+| Host tools loading the AppImage'"'"'s bundled libraries | Every child process is built by `util::command`, which drops `LD_LIBRARY_PATH`, `PATH` and GTK/GIO/XDG entries under `APPDIR` |
+| Missing libraries after install | `ldd` over the installed ELF files, as the user, after the package is in place; findings are warnings, never actions |
 | TOCTOU between analysis and install | Hash the file at analyze time; re-hash before execute; abort on mismatch |
 
 ## PackageKit lesson

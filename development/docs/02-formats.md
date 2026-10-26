@@ -34,6 +34,8 @@ For each format: how to recognise it (magic bytes beat file extensions), how to 
 - Metadata: `dpkg-deb -f file.deb Package Version Architecture Depends`. Architecture check against `dpkg --print-architecture`.
 - Install (Debian family): `apt install ./file.deb` — preferred over `dpkg -i` because apt resolves dependencies.
 - Remove: `apt remove <Package>` (or `purge`).
+- The package name always comes from `dpkg-deb -f`; if it cannot be read the plan is refused, because a name guessed from the file would make Remove fail.
+- A `.deb` may declare no `Depends` it needs (Ghost Downloader lacks `libxcb-cursor0`). After install Unpack runs `ldd` over the package files and warns about missing libraries.
 - Non-Debian distro: not installable natively. Options in order: find native equivalent, Flatpak/AppImage of same app, `alien`/`debtap` conversion, container (distrobox). `bsdtar -xf file.deb` lists the members; the data tarball holds the files.
 - Trap: arm64 `.deb` on amd64 box; `Depends` on packages not in this distro's release (e.g. Ubuntu `.deb` on Debian stable).
 
@@ -70,6 +72,7 @@ For each format: how to recognise it (magic bytes beat file extensions), how to 
 - ELF runtime + squashfs payload. Needs the `libfuse.so.2` library to mount; on Ubuntu 24.04 the package is `libfuse2t64` (not `libfuse2`). Without FUSE, `--appimage-extract-and-run` (or env `APPIMAGE_EXTRACT_AND_RUN=1`) works without mounting **(unverified for every runtime)**.
 - Metadata: `./app.AppImage --appimage-extract 'usr/share/applications/*.desktop'` and icon; `--appimage-extract` unpacks to `squashfs-root/`.
 - "Install" = copy to `~/Applications` (or `~/.local/share/unpack/appimages`), `chmod +x`, write `.desktop` with absolute `Exec=`, copy icon into `~/.local/share/icons/hicolor/…`, run `update-desktop-database ~/.local/share/applications`. Validate with `desktop-file-validate`.
+- Electron apps (an image containing `chrome-sandbox`) abort with "The SUID sandbox helper binary was found, but is not configured correctly" when unprivileged user namespaces are restricted (Ubuntu 24.04: `kernel.apparmor_restrict_unprivileged_userns=1`). Unpack then writes `--no-sandbox` into the menu entry and says so in the plan. A proper AppArmor profile would keep the sandbox but needs root and was not verified **(unverified)**.
 - Updates: embedded update information (zsync transport or `gh-releases-zsync|owner|repo|latest|file.zsync`), applied by `appimageupdatetool`.
 - Remove: delete the AppImage, the `.desktop`, icons. No root.
 
