@@ -6,7 +6,9 @@ settings:
 
 importers:
 
-  .:
+  .: {}
+
+  app:
     dependencies:
       '@tauri-apps/api':
         specifier: ^2.12.4

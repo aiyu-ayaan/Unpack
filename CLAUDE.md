@@ -13,13 +13,13 @@ Unpack is a Linux desktop app: drop in a package, archive, script, git URL, or p
 - `development/TODO.md` — master task list. Update it in the same commit as the work.
 
 ## Commands
-Run from `app/`:
+Run from the repo root (a pnpm workspace; root scripts forward to `app/`):
 - `pnpm install` — frontend deps
 - `pnpm tauri dev` — run the app
 - `pnpm build` — type-check + build frontend
 - `pnpm tauri build --bundles deb` — release `.deb` (bundle category must be a valid freedesktop one, e.g. `Utility`)
-- `cargo test --manifest-path src-tauri/Cargo.toml` — backend tests (must pass before committing Rust changes)
-- `cargo clippy --manifest-path src-tauri/Cargo.toml` — lints
+- `pnpm test` — backend tests, `cargo test` (must pass before committing Rust changes)
+- `pnpm lint` — `cargo clippy`
 - System build deps (Debian/Ubuntu): `libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev build-essential`
 
 ## Rules

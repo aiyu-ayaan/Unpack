@@ -145,18 +145,18 @@ sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev
 ## Run in development
 
 ```bash
-cd app
 pnpm install
 pnpm tauri dev         # starts Vite on http://localhost:1420 and the desktop window
 ```
 
-The debug binary loads `http://localhost:1420`, so the dev server must be running first. Other commands:
+Run everything from the repo root; it is a pnpm workspace and the scripts forward to `app/`. The debug
+binary loads `http://localhost:1420`, so the dev server must be running first. Other commands:
 
 ```bash
-pnpm build                                      # type-check and build the frontend
-pnpm tauri build --bundles deb                  # release .deb (also: rpm, appimage)
-cargo test --manifest-path src-tauri/Cargo.toml    # backend tests
-cargo clippy --manifest-path src-tauri/Cargo.toml  # lints
+pnpm build                       # type-check and build the frontend
+pnpm tauri build --bundles deb   # release .deb (also: rpm, appimage)
+pnpm test                        # backend tests (cargo test)
+pnpm lint                        # clippy
 ```
 
 ## Using it
@@ -209,6 +209,6 @@ No license has been chosen yet.
 ## Tests
 
 ```bash
-cargo test --manifest-path app/src-tauri/Cargo.toml
-cd app && pnpm build
+pnpm test
+pnpm build
 ```
