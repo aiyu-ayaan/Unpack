@@ -186,11 +186,17 @@ jobs:
   # --- Step 2: merging that PR is the release --------------------------------
 
   build:
-    name: Linux bundles
+    name: Linux bundles (${{ matrix.arch }})
     needs: plan
     if: contains(fromJSON('["release","patch"]'), needs.plan.outputs.mode)
-    # The oldest runner still supported: an AppImage built here runs on more distros.
-    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        # The oldest runners still supported: an AppImage built there runs on more distros.
+        # appimage/deb are the suffixes the updater and install script look for.
+        include:
+          - { arch: x86_64, runner: ubuntu-22.04, appimage: amd64, deb: amd64 }
+          - { arch: aarch64, runner: ubuntu-22.04-arm, appimage: aarch64, deb: arm64 }
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -217,12 +223,12 @@ jobs:
         run: |
           cd app/src-tauri/target/release/bundle
           ls -l appimage deb rpm
-          for pattern in "appimage/*_${VERSION}_amd64.AppImage" "deb/*_${VERSION}_amd64.deb"; do
+          for pattern in "appimage/*_${VERSION}_${{ matrix.appimage }}.AppImage" "deb/*_${VERSION}_${{ matrix.deb }}.deb"; do
             ls $pattern > /dev/null || { echo "::error::No file matches $pattern; the updater looks for these names."; exit 1; }
           done
       - uses: actions/upload-artifact@v4
         with:
-          name: bundles
+          name: bundles-${{ matrix.arch }}
           path: |
             app/src-tauri/target/release/bundle/appimage/*.AppImage
             app/src-tauri/target/release/bundle/deb/*.deb
@@ -244,7 +250,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: bundles
+          pattern: bundles-*
+          merge-multiple: true
           path: artifacts
       - name: GitHub Release
         run: |
