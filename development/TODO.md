@@ -13,7 +13,7 @@ Legend: `[x]` done, `[ ]` open, `[~]` partly done. Update this file in the same 
 ## M1 — Scaffold
 - [x] Tauri 2 + Vite + React + TS + Tailwind v4 project in `app/`
 - [x] App icon, CSP, minimal capabilities
-- [ ] `cargo check` and `pnpm build` green
+- [x] `cargo check` and `pnpm build` green
 
 ## M2 — Backend core (Rust)
 - [x] `system.rs`: os-release parse, package managers, runtimes, helpers, arch, immutable flag
@@ -29,12 +29,12 @@ Legend: `[x]` done, `[ ]` open, `[~]` partly done. Update this file in the same 
 - [x] Unit tests for all of the above
 
 ## M3 — UI
-- [ ] App shell, sidebar, dark glass theme
-- [ ] Install view: drop zone, text input, plan review, live log, success/failure
-- [ ] Library view: tracked + system packages, search, uninstall with confirm
-- [ ] System view: detected distro, managers, missing helpers
-- [ ] History view
-- [ ] Empty/error states in plain language (target: first-time Linux user)
+- [x] App shell, sidebar, dark glass theme
+- [x] Install view: drop zone, text input, plan review, live log, success/failure
+- [x] Library view: tracked + system packages, search, uninstall with confirm
+- [x] System view: detected distro, managers, missing helpers
+- [x] History view
+- [x] Empty/error states in plain language (target: first-time Linux user)
 
 ## M4 — Format completeness (per-format install + uninstall working end to end)
 - [ ] .deb  - [ ] .rpm  - [ ] .pkg.tar.zst  - [ ] .apk (Alpine)  - [ ] Android .apk rejection
