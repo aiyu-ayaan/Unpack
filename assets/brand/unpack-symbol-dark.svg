@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+<title>Unpack symbol (for dark backgrounds)</title>
+<path fill="#e6edf3" d="M40 96H68V172A8 8 0 0 0 76 180H180A8 8 0 0 0 188 172V96H216V180A28 28 0 0 1 188 208H68A28 28 0 0 1 40 180Z"/>
+<rect fill="#3fb950" x="96" y="48" width="64" height="64" rx="10"/>
+</svg>

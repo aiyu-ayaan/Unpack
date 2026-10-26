@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+<title>Unpack app icon</title>
+<rect width="1024" height="1024" rx="228" fill="#161b22"/>
+<g transform="translate(115.2 115.2) scale(3.1)">
+<path fill="#e6edf3" d="M40 96H68V172A8 8 0 0 0 76 180H180A8 8 0 0 0 188 172V96H216V180A28 28 0 0 1 188 208H68A28 28 0 0 1 40 180Z"/>
+<rect fill="#3fb950" x="96" y="48" width="64" height="64" rx="10"/>
+</g>
+</svg>
