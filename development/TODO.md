@@ -46,6 +46,7 @@ Legend: `[x]` done, `[ ]` open, `[~]` partly done. Update this file in the same 
 - [x] Settings view: updates (channel, check, download), about, developer, credits
 - [x] Self-update (`updates.rs`): GitHub releases, channels, AppImage self-replace, package download + `xdg-open`, offer at start
 - [x] Release workflow: marker commits (`!alpha` ... `!patch`) open a release PR, merging builds AppImage + deb + rpm, tags and publishes (`docs/08-release.md`)
+- [x] `scripts/install-linux.sh`: curl installer (AppImage in `~/.local/share/unpack`, menu entry, icon, `unpack` command, channel fallback stable > beta > alpha, `--uninstall`); tested with a local AppImage in a throwaway HOME
 - [ ] Allow Actions to create PRs in the repo settings, push, and run the first `!alpha` release; fix what the first real run shows **(unverified)**
 - [ ] Verify the AppImage self-replace and the `.deb` hand-off on a real system **(unverified)**
 - [ ] Check icon in a real GNOME/KDE launcher and the built `.deb` **(unverified)**

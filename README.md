@@ -129,6 +129,19 @@ options (`flatpak --user`, `~/.local`) are preferred whenever the format allows.
 | `pkexec` is not installed | The same terminal command, and a warning in the plan before you start |
 | Unpack itself was started as root | A warning on the System page: user-scope apps would be installed for root |
 
+## Install
+
+For the current user, x86_64, no root: the newest AppImage, a menu entry with the Unpack icon and an `unpack` command. The app then keeps itself up to date.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/aiyu-ayaan/Unpack/master/scripts/install-linux.sh | sh
+# ... | sh -s -- --channel beta     beta builds too (or alpha)
+# ... | sh -s -- --version 0.0.1    one specific release
+# ... | sh -s -- --uninstall        remove it; history and settings are kept
+```
+
+With no stable release yet, it falls back to the newest beta, then alpha, and says so. Re-run it to update. A `.deb` or `.rpm` from the release page works too.
+
 ## Requirements
 
 - Linux with at least one of `apt`, `dnf`, `zypper`, `pacman`, `apk`, `flatpak` or `snap`
