@@ -29,7 +29,7 @@ export default function Library({ version, onTask }: { version: number; onTask: 
 
   const remove = async (key: string, name: string, fn: () => Promise<{ ok: boolean; error: string | null }>) => {
     setBusy(key); setConfirm(null); setMsg(null); setLog([]);
-    onTask({ label: `removing ${name}`, progress: null });
+    onTask({ label: `Removing ${name}`, progress: null });
     try {
       const r = await fn();
       if (!r.ok) setMsg(r.error ?? "Could not remove");
@@ -44,22 +44,22 @@ export default function Library({ version, onTask }: { version: number; onTask: 
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-5">
-      <PageHeader title="library" sub="Everything you installed, in one place.">
-        <button className="btn" onClick={() => { void loadApps(); if (tab === "system") loadSys(); }}><RefreshCw className="h-4 w-4" aria-hidden /> refresh</button>
+      <PageHeader title="Library" sub="Everything you installed, in one place.">
+        <button className="btn" onClick={() => { void loadApps(); if (tab === "system") loadSys(); }}><RefreshCw className="h-4 w-4" aria-hidden /> Refresh</button>
       </PageHeader>
       <div className="flex flex-wrap items-center gap-3">
-        <div className="flex rounded-md border border-line bg-panel p-0.5" role="tablist">
+        <div className="flex gap-4 border-b border-line" role="tablist">
           {(["tracked", "system"] as Tab[]).map((t) => (
             <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)}
-              className={`cursor-pointer rounded px-3 py-1.5 font-mono text-xs transition-colors duration-150 ${tab === t ? "bg-accent text-on-accent font-semibold" : "text-dim hover:text-ink"}`}>
-              {t === "tracked" ? `unpack (${apps.filter((a) => a.status === "installed").length})` : "this computer"}
+              className={`-mb-px cursor-pointer border-b-2 px-1 pb-2 transition-colors duration-150 ${tab === t ? "border-accent-ink text-strong" : "border-transparent text-dim hover:text-ink"}`}>
+              {t === "tracked" ? `Installed with Unpack (${apps.filter((a) => a.status === "installed").length})` : "Everything on this computer"}
             </button>
           ))}
         </div>
-        <label className="relative min-w-48 flex-1">
+        <label className="relative ml-auto w-64">
           <span className="sr-only">Search packages</span>
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-dim" aria-hidden />
-          <input className="input py-2! pl-9!" placeholder="grep…" value={q} onChange={(e) => setQ(e.target.value)} spellCheck={false} />
+          <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-dim" aria-hidden />
+          <input className="input pl-8!" placeholder="Search" value={q} onChange={(e) => setQ(e.target.value)} spellCheck={false} />
         </label>
       </div>
       {msg && <Banner tone="bad" icon={<XCircle className="h-4 w-4" />}>{msg}</Banner>}
@@ -73,7 +73,7 @@ export default function Library({ version, onTask }: { version: number; onTask: 
               <Remove id={`a${a.id}`} busy={busy} confirm={confirm} setConfirm={setConfirm} run={() => remove(`a${a.id}`, a.name, () => api.uninstall(a.id))} />)} />
         ))}</div>}
         {tab === "tracked" && tracked.length === 0 && <Empty>Nothing here yet. Install something and it will show up.</Empty>}
-        {tab === "system" && sys === null && <div className="flex flex-col gap-3 px-5 py-8"><Progress value={null} label="Scanning packages" /><div className="text-center font-mono text-xs text-dim">scanning installed packages…</div></div>}
+        {tab === "system" && sys === null && <div className="flex flex-col gap-3 px-5 py-8"><Progress value={null} label="Scanning packages" /><div className="text-center text-dim">Looking for installed packages…</div></div>}
         {tab === "system" && system.map((p) => (
           <Row key={`${p.manager}:${p.name}`} title={p.name} sub={p.version} status={p.manager} how=""
             action={<Remove id={`${p.manager}:${p.name}`} busy={busy} confirm={confirm} setConfirm={setConfirm} run={() => remove(`${p.manager}:${p.name}`, p.name, () => api.uninstallSystem(p.manager, p.name))} />} />
@@ -86,8 +86,8 @@ export default function Library({ version, onTask }: { version: number; onTask: 
 
 function Row({ title, sub, status, how, action }: { title: string; sub: string; status: string; how: string; action: React.ReactNode }) {
   return (
-    <div className="flex items-center gap-4 px-4 py-2.5 transition-colors hover:bg-raised">
-      <div className="min-w-0 flex-1"><div className="truncate font-mono text-sm">{title}</div><div className="truncate text-xs text-dim">{sub}{how && ` · ${how}`}</div></div>
+    <div className="group flex items-center gap-4 px-4 py-2 transition-colors hover:bg-hover">
+      <div className="min-w-0 flex-1"><div className="truncate text-strong">{title}</div><div className="truncate text-xs text-dim">{sub}{how && ` · ${how}`}</div></div>
       <span className={`chip ${status === "installed" ? "chip-ok" : ""}`}>{status}</span>
       {action}
     </div>
@@ -95,7 +95,7 @@ function Row({ title, sub, status, how, action }: { title: string; sub: string; 
 }
 
 function Remove({ id, busy, confirm, setConfirm, run }: { id: string; busy: string | null; confirm: string | null; setConfirm: (s: string | null) => void; run: () => void }) {
-  if (busy === id) return <span className="font-mono text-xs text-accent-ink">removing…</span>;
-  if (confirm === id) return <span className="enter flex gap-1"><button className="btn btn-danger" onClick={run}>really remove</button><button className="btn" onClick={() => setConfirm(null)}>no</button></span>;
-  return <button className="btn" disabled={busy !== null} onClick={() => setConfirm(id)}><Trash2 className="h-4 w-4" aria-hidden /> remove</button>;
+  if (busy === id) return <span className="text-xs text-dim">Removing…</span>;
+  if (confirm === id) return <span className="enter flex gap-1"><button className="btn btn-danger" onClick={run}>Remove</button><button className="btn" onClick={() => setConfirm(null)}>Cancel</button></span>;
+  return <button className="btn btn-ghost" disabled={busy !== null} onClick={() => setConfirm(id)}><Trash2 className="h-4 w-4" aria-hidden /> Remove</button>;
 }

@@ -69,8 +69,8 @@ export default function Install({ onInstalled, onTask }: { onInstalled: () => vo
   const waitingRoot = phase === "running" && lines.at(-1)?.line === "Waiting for the admin password…";
 
   useEffect(() => {
-    if (phase === "analyzing") onTask({ label: "analyzing…", progress: null });
-    else if (phase === "running" && plan) onTask({ label: waitingRoot ? "waiting for admin password" : `installing ${plan.name}`, progress });
+    if (phase === "analyzing") onTask({ label: "Checking…", progress: null });
+    else if (phase === "running" && plan) onTask({ label: waitingRoot ? "Waiting for admin password" : `Installing ${plan.name}`, progress });
     else onTask(null);
   }, [phase, plan, progress, waitingRoot, onTask]);
 
@@ -89,24 +89,23 @@ export default function Install({ onInstalled, onTask }: { onInstalled: () => vo
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-5">
-      <PageHeader title="install" sub="Drop a file, paste a link, a curl/wget command or a git address. Unpack figures out the rest." />
+      <PageHeader title="Install an app" sub="Drop a file, or paste a link, download command or git address. Unpack works out the rest." />
 
       {(phase === "idle" || phase === "analyzing") && (
-        <section className={`card enter p-5 transition-[border-color,box-shadow] duration-200 ${drag ? "border-accent! shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent)_25%,transparent)]" : ""}`}>
-          <div className={`flex flex-col items-center gap-2 rounded-md border border-dashed py-10 text-center transition-colors duration-200 ${drag ? "border-accent bg-accent/5" : "border-line"}`}>
-            <FileDown className={`h-8 w-8 text-accent-ink transition-transform duration-200 ${drag ? "-translate-y-1 scale-110" : ""}`} aria-hidden />
-            <div className="font-mono text-base font-semibold">{drag ? "release to analyze" : "drag a file here"}</div>
-            <div className="text-sm text-dim">or paste below</div>
+        <section className={"card enter p-5"}>
+          <div className={`flex flex-col items-center gap-2 rounded-md border border-dashed py-12 text-center transition-colors duration-150 ${drag ? "border-info bg-info/10" : "border-line"}`}>
+            <FileDown className={`h-9 w-9 transition-transform duration-150 ${drag ? "-translate-y-1 text-info" : "text-dim"}`} strokeWidth={1.25} aria-hidden />
+            <div className="text-sm font-medium text-strong">{drag ? "Release to check it" : "Drag a file here"}</div>
+            <div className="text-dim">or paste below</div>
           </div>
           <form className="mt-4 flex gap-2" onSubmit={(e) => { e.preventDefault(); void analyze(text); }}>
             <label className="relative flex-1">
               <span className="sr-only">File path, URL, git address or curl/wget command</span>
-              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-sm text-accent-ink" aria-hidden>$</span>
-              <input className="input pl-7!" placeholder="/path/to/app.deb · https://… · curl -fsSL https://… | sh"
+              <input className="input" placeholder="e.g. ~/Downloads/app.deb, https://example.com/app.AppImage, or curl -fsSL … | sh"
                 value={text} onChange={(e) => setText(e.target.value)} disabled={phase === "analyzing"} spellCheck={false} autoFocus />
             </label>
             <button className="btn btn-primary shrink-0" disabled={phase === "analyzing" || !text.trim()}>
-              {phase === "analyzing" ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Sparkles className="h-4 w-4" aria-hidden />} analyze
+              {phase === "analyzing" ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Sparkles className="h-4 w-4" aria-hidden />} Check
             </button>
           </form>
           {phase === "analyzing" && <div className="mt-3"><Progress value={null} label="Analyzing" /></div>}
@@ -114,21 +113,21 @@ export default function Install({ onInstalled, onTask }: { onInstalled: () => vo
             <input type="checkbox" className="accent-[var(--accent)]" checked={allowHttp} onChange={(e) => setAllowHttp(e.target.checked)} /> Allow unencrypted http:// links (not recommended)
           </label>
           {error && <div className="mt-3"><Banner tone="bad" icon={<XCircle className="h-4 w-4" />}>{error}</Banner></div>}
-          <div className="mt-5 flex flex-wrap gap-1.5">{FORMATS.map((f) => <span key={f} className="chip">{f}</span>)}</div>
+          <div className="mt-5 flex flex-wrap items-center gap-1.5"><span className="mr-1 text-xs text-dim">Works with</span>{FORMATS.map((f) => <span key={f} className="chip">{f}</span>)}</div>
         </section>
       )}
 
       {plan && phase !== "idle" && phase !== "analyzing" && (
         <section className="card enter flex flex-col gap-4 p-5">
           <div className="flex items-start gap-4">
-            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-md border border-accent/40 bg-accent/10"><Package className="h-5 w-5 text-accent-ink" aria-hidden /></div>
+            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-md bg-raised"><Package className="h-5 w-5 text-accent-ink" strokeWidth={1.5} aria-hidden /></div>
             <div className="min-w-0 flex-1">
-              <h2 className="truncate font-mono text-lg font-semibold">{plan.name}{plan.version && <span className="ml-2 text-sm font-normal text-dim">{plan.version}</span>}</h2>
-              <div className="mt-1 flex flex-wrap gap-1.5"><span className="chip">{plan.kind}</span>{plan.needs_root && <span className="chip chip-warn"><Lock className="h-3 w-3" aria-hidden /> admin password</span>}</div>
+              <h2 className="truncate text-base font-semibold text-strong">{plan.name}{plan.version && <span className="ml-2 text-sm font-normal text-dim">{plan.version}</span>}</h2>
+              <div className="mt-1 flex flex-wrap gap-1.5"><span className="chip">{plan.kind}</span>{plan.needs_root && <span className="chip chip-warn"><Lock className="h-3 w-3" aria-hidden /> Needs admin password</span>}</div>
               <div className="mt-1 truncate text-xs text-dim" title={plan.source}>{plan.source}</div>
-              {plan.sha256 && <div className="truncate font-mono text-[10px] text-dim" title={plan.sha256}>sha256 {plan.sha256}</div>}
+              {plan.sha256 && <div className="truncate text-[11px] text-dim" title={plan.sha256}>SHA-256 {plan.sha256.slice(0, 16)}…</div>}
             </div>
-            {phase === "review" && <button className="btn" onClick={reset} aria-label="Cancel"><X className="h-4 w-4" /></button>}
+            {phase === "review" && <button className="btn btn-ghost px-1.5!" onClick={reset} aria-label="Cancel" title="Cancel"><X className="h-4 w-4" /></button>}
           </div>
 
           {plan.warnings.map((w, i) => <Banner key={i} tone={plan.supported ? "warn" : "bad"} icon={plan.supported ? <AlertTriangle className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}>{w}</Banner>)}
@@ -137,24 +136,24 @@ export default function Install({ onInstalled, onTask }: { onInstalled: () => vo
           {phase !== "review" && (
             <div className="flex items-center gap-3">
               <div className="flex-1"><Progress value={phase === "failed" ? Math.max(0, active) / Math.max(1, total) : progress} label="Install progress" /></div>
-              <span className="w-10 text-right font-mono text-xs text-dim">{progress === null ? "" : `${Math.round(progress * 100)}%`}</span>
+              <span className="w-10 text-right text-xs tabular-nums text-dim">{progress === null ? "" : `${Math.round(progress * 100)}%`}</span>
             </div>
           )}
 
           {plan.steps.length > 0 && (
-            <ol className="stagger flex flex-col gap-1.5">
+            <ol className="stagger flex flex-col overflow-hidden rounded-md border border-line">
               {plan.steps.map((s, i) => {
                 const st = phase === "done" || (phase !== "review" && i < active) ? "done" : phase === "running" && i === active ? "run" : phase === "failed" && i === active ? "fail" : "wait";
                 return (
-                  <li key={i} className={`rounded-md border p-3 transition-colors duration-300 ${st === "run" ? "border-accent/60 bg-accent/5" : st === "fail" ? "border-bad/60" : "border-line bg-raised"}`}>
-                    <div className="flex items-center gap-2 text-sm font-medium">
+                  <li key={i} className={`border-b border-line px-3 py-2 transition-colors duration-200 last:border-0 ${st === "run" ? "bg-info/10" : st === "fail" ? "bg-bad/10" : ""}`}>
+                    <div className="flex items-center gap-2 text-strong">
                       <span className="grid h-5 w-5 shrink-0 place-items-center" aria-label={st}>
-                        {st === "done" ? <Check className="pop h-4 w-4 text-accent-ink" /> : st === "run" ? <Loader2 className="h-4 w-4 animate-spin text-accent-ink" />
-                          : st === "fail" ? <XCircle className="pop h-4 w-4 text-bad" /> : <span className="font-mono text-[11px] text-dim">{i + 1}</span>}
+                        {st === "done" ? <Check className="pop h-4 w-4 text-accent-ink" /> : st === "run" ? <Loader2 className="h-4 w-4 animate-spin text-info" />
+                          : st === "fail" ? <XCircle className="pop h-4 w-4 text-bad" /> : <span className="text-[11px] text-dim">{i + 1}</span>}
                       </span>
                       {s.label}{s.needs_root && <Lock className="h-3 w-3 text-warn" aria-label="needs admin" />}
                     </div>
-                    <code className="mt-1 block truncate pl-7 font-mono text-xs text-dim" title={s.display}><span className="text-accent-ink">$</span> {s.display}</code>
+                    <code className="block truncate pl-7 font-mono text-[11px] text-dim" title={s.display}>{s.display}</code>
                   </li>
                 );
               })}
@@ -163,8 +162,8 @@ export default function Install({ onInstalled, onTask }: { onInstalled: () => vo
 
           {plan.preview && (
             <div>
-              <button className="flex cursor-pointer items-center gap-1 font-mono text-xs text-dim hover:text-ink" onClick={() => setShowPreview((v) => !v)} aria-expanded={showPreview}>
-                <ChevronRight className={`h-4 w-4 transition-transform duration-200 ${showPreview ? "rotate-90" : ""}`} aria-hidden /> {showPreview ? "hide" : "show"} contents
+              <button className="flex cursor-pointer items-center gap-1 text-dim hover:text-ink" onClick={() => setShowPreview((v) => !v)} aria-expanded={showPreview}>
+                <ChevronRight className={`h-4 w-4 transition-transform duration-200 ${showPreview ? "rotate-90" : ""}`} aria-hidden /> {showPreview ? "Hide" : "Show"} contents
               </button>
               {showPreview && <pre className="enter mt-2 max-h-72 overflow-auto rounded-md border border-line bg-term p-3 font-mono text-xs">{plan.preview}</pre>}
             </div>
@@ -178,12 +177,12 @@ export default function Install({ onInstalled, onTask }: { onInstalled: () => vo
           {phase !== "review" && <Log lines={lines} running={phase === "running"} />}
           {phase === "done" && <Banner tone="good" icon={<CheckCircle2 className="h-4 w-4" />}>Installed. You can find it in your Library.</Banner>}
           {phase === "failed" && <Banner tone="bad" icon={<XCircle className="h-4 w-4" />}>{error ?? "Install failed"}</Banner>}
-          {phase === "failed" && sudo && <button className="btn self-start" onClick={() => copy(sudo)}><Copy className="h-4 w-4" aria-hidden /> {copied ? "copied" : "copy terminal command"}</button>}
+          {phase === "failed" && sudo && <button className="btn self-start" onClick={() => copy(sudo)}><Copy className="h-4 w-4" aria-hidden /> {copied ? "Copied" : "Copy terminal command"}</button>}
 
           <div className="flex justify-end gap-2">
-            {phase === "review" && <button className="btn btn-primary" disabled={!plan.supported} onClick={run}><Play className="h-4 w-4" aria-hidden /> install</button>}
-            {phase === "running" && <button className="btn" disabled><Loader2 className="h-4 w-4 animate-spin" aria-hidden /> working…</button>}
-            {(phase === "done" || phase === "failed") && <button className="btn" onClick={reset}>install something else</button>}
+            {phase === "review" && <button className="btn btn-primary" disabled={!plan.supported} onClick={run}><Play className="h-4 w-4" aria-hidden /> Install</button>}
+            {phase === "running" && <button className="btn" disabled><Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Installing…</button>}
+            {(phase === "done" || phase === "failed") && <button className="btn" onClick={reset}>Install something else</button>}
           </div>
         </section>
       )}

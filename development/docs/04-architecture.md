@@ -122,7 +122,7 @@ Events: `plan-log {plan_id, stream, line}` (`plan_id` is `"uninstall"` during re
 
 ## UI
 
-Views: **Install** (drop zone + input; plan review; live log), **Library** (tracked and system-wide, search, uninstall), **System** (detected distro, managers, missing helpers with one-click bootstrap), **History** (events). Editor-style shell (activity bar, tab strip, status bar showing distro and the running task). Terminal theme: black + green, light and dark; tokens are CSS variables in `app/src/index.css` switched by `html[data-theme]` (OS preference by default, toggle saved in `localStorage`). Install progress is per step, derived from the runner's `== label ==` log markers. `lucide-react` icons.
+Views: **Install** (drop zone + input; plan review; live log), **Library** (tracked and system-wide, search, uninstall), **System** (detected distro, managers, missing helpers with one-click bootstrap), **History** (events). VS Code style shell: our own draggable titlebar (native decorations off; minimize / maximize / close through the window API, allowed in `capabilities/default.json`), icon activity bar, tab strip with a 2px progress line, and a status bar with the distro and the running task. Tokens follow VS Code's Dark Modern / Light Modern with a green accent; they are CSS variables in `app/src/index.css` switched by `html[data-theme]` (OS preference by default, toggle saved in `localStorage`). Plain-language sans-serif text; monospace only for commands and the Output panel. Install progress is per step, derived from the runner's `== label ==` log markers. `lucide-react` icons.
 
 ## Testing
 

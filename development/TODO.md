@@ -31,8 +31,9 @@ Legend: `[x]` done, `[ ]` open, `[~]` partly done. Update this file in the same 
 - [x] Unit tests for all of the above
 
 ## M3 — UI
-- [x] App shell: activity bar, editor-style tab strip, status bar (distro, manager, running task)
-- [x] Terminal theme (black + green), light and dark with OS default and toggle, reduced-motion support
+- [x] App shell: own draggable titlebar, activity bar, tab strip, status bar (distro, manager, running task)
+- [x] VS Code style theme (Dark/Light Modern greys, green accent), OS default and toggle, reduced-motion support
+- [ ] Verify undecorated window resizing from edges on GNOME/KDE/X11/Wayland **(unverified)**
 - [x] Progress bars: analyze/scan/remove (indeterminate), install (per-step from runner `== label ==` markers)
 - [x] Install view: drop zone, text input, plan review, live log, success/failure
 - [x] Library view: tracked + system packages, search, uninstall with confirm
