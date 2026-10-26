@@ -1,6 +1,4 @@
-<img src="app/src-tauri/icons/128x128.png" alt="Unpack logo" width="72" />
-
-# Unpack
+<h1 align="center"><img src="assets/brand/unpack-lockup-animated.svg" alt="Unpack" width="380" /></h1>
 
 ![Rust](https://img.shields.io/badge/backend-Rust-000000?logo=rust&logoColor=white)
 ![Tauri](https://img.shields.io/badge/shell-Tauri%202-24C8DB?logo=tauri&logoColor=white)
@@ -25,7 +23,7 @@ SQLite, and can uninstall it later. Made for people new to Linux, who should not
 - **Tracked and reversible**: every install records how to remove it; the Library also lists packages you installed some other way
 - **History** of everything Unpack did and when
 - **Safe by design**: the UI never sends command lines, archives are checked for path traversal, files are re-hashed before running, and `--allow-untrusted` style flags are never passed silently
-- **Familiar, quiet look**: VS Code style window with its own draggable titlebar, activity bar, tabs and status bar; light and dark; animations that respect *reduced motion*
+- **Familiar, quiet look**: VS Code style window with its own draggable titlebar, activity bar, tabs and status bar; light and dark; an animated start-up logo and animations that respect *reduced motion*
 
 Research and design: [`development/docs/README.md`](development/docs/README.md).
 Architecture: [`development/docs/04-architecture.md`](development/docs/04-architecture.md), summarised [below](#how-it-fits-together).

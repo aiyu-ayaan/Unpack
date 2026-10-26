@@ -9,6 +9,7 @@ Unpack is a Linux desktop app: drop in a package, archive, script, git URL, or p
 
 ## Layout
 - `app/` — the application (`src/` React, `src-tauri/` Rust)
+- `assets/brand/` — logo SVGs and `build.py` (generates them and `app/src/components/logoPaths.ts`). See `development/docs/06-brand.md`
 - `development/docs/` — research and design docs. Start at `development/docs/README.md`
 - `development/TODO.md` — master task list. Update it in the same commit as the work.
 

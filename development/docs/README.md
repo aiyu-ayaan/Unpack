@@ -9,6 +9,7 @@ Unpack: a Linux app that installs (and later uninstalls) software from any file,
 | [03-distro-compat.md](03-distro-compat.md) | Distro / package-manager detection, immutable distros, decision table |
 | [04-architecture.md](04-architecture.md) | Stack, modules, data flow, SQLite schema, commands |
 | [05-security.md](05-security.md) | Threat model and rules |
+| [06-brand.md](06-brand.md) | Logo, colours, usage rules, motion, how to regenerate |
 | [sources.md](sources.md) | Links used and what is still unverified |
 | [../TODO.md](../TODO.md) | Master task list |
 | [../../CLAUDE.md](../../CLAUDE.md) | Guide for Claude working in this repo |

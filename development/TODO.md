@@ -40,6 +40,9 @@ Legend: `[x]` done, `[ ]` open, `[~]` partly done. Update this file in the same 
 - [x] System view: detected distro, managers, missing helpers
 - [x] History view
 - [x] Empty/error states in plain language (target: first-time Linux user)
+- [x] Brand: tray logo, wordmark, lockups, app icons, animated README logo (`docs/06-brand.md`)
+- [x] Animated start-up splash, logo in titlebar and favicon
+- [ ] Check icon in a real GNOME/KDE launcher and the built `.deb` **(unverified)**
 
 ## M4 — Format completeness
 Status: all code paths below exist and are unit-tested for planning/parsing. `[~]` = implemented, not yet run end to end on a real distro (see M5).
