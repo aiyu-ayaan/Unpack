@@ -1,5 +1,5 @@
 #!/bin/sh
-# Install, update or remove the Unpack desktop app on Linux (x86_64), for this user, no root.
+# Install, update or remove the Unpack desktop app on Linux (x86_64 or aarch64), for this user, no root.
 #
 #   curl -fsSL https://raw.githubusercontent.com/aiyu-ayaan/Unpack/master/scripts/install-linux.sh | sh
 #   ... | sh -s -- --channel beta     beta builds (and stable ones)
@@ -10,7 +10,7 @@
 # itself by replacing that file (app/src-tauri/src/updates.rs). It also gets a menu entry with
 # the app's own icon and an `unpack` command. Re-running it updates.
 #
-# Works on any x86_64 glibc distro: it checks what the system has, not which distro it is. Without
+# Works on any x86_64 or aarch64 glibc distro: it checks what the system has, not which distro it is. Without
 # libfuse2 (not installed by default on recent Ubuntu, Debian and Fedora) the AppImage is run in its
 # extract-and-run mode, so nothing has to be installed first. musl systems (Alpine) cannot run it.
 #
@@ -61,7 +61,12 @@ if [ "$UNINSTALL" -eq 1 ]; then
   exit 0
 fi
 
-case "$(uname -m)" in x86_64 | amd64) ;; *) die "Unpack for Linux is built for x86_64 only; this machine is $(uname -m)." ;; esac
+# Release file suffix per CPU, as the release workflow names them.
+case "$(uname -m)" in
+  x86_64 | amd64) ARCH=amd64 ;;
+  aarch64 | arm64) ARCH=aarch64 ;;
+  *) die "Unpack for Linux is built for x86_64 and aarch64; this machine is $(uname -m)." ;;
+esac
 
 # The AppImage is built against glibc. Alpine and other musl systems fail with a cryptic loader error.
 if ldd --version 2>&1 | grep -qi musl; then
@@ -98,10 +103,10 @@ else
   # Every AppImage URL as "<sort key> <version> <url>"; the newest is last after a sort. The key
   # orders by number, then alpha < beta < stable, then the pre-release number (plain `sort -V`
   # puts 0.0.1 before 0.0.1-alpha.1). A channel takes its own builds and every steadier one.
-  urls="$(printf '%s\n' "$releases" | grep -oE 'https://[^"]*/Unpack_[0-9][^"/]*_amd64\.AppImage' | sort -u)"
+  urls="$(printf '%s\n' "$releases" | grep -oE "https://[^\"]*/Unpack_[0-9][^\"/]*_${ARCH}\\.AppImage" | sort -u)"
   newest_on() {
     printf '%s\n' "$urls" | awk -v channel="$1" -v want="$VERSION" '{
-      v = $0; sub(/.*\/Unpack_/, "", v); sub(/_amd64\.AppImage$/, "", v)
+      v = $0; sub(/.*\/Unpack_/, "", v); sub(/_[a-z0-9]+\.AppImage$/, "", v)
       if (v !~ /^[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta)\.[0-9]+)?$/) next
       split(v, p, /[.-]/)
       stage = 2; n = 99999

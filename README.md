@@ -131,7 +131,7 @@ options (`flatpak --user`, `~/.local`) are preferred whenever the format allows.
 
 ## Install
 
-For the current user, x86_64, no root: the newest AppImage, a menu entry with the Unpack icon and an `unpack` command. The app then keeps itself up to date.
+For the current user, x86_64 or aarch64, no root: the newest AppImage, a menu entry with the Unpack icon and an `unpack` command. The app then keeps itself up to date.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/aiyu-ayaan/Unpack/master/scripts/install-linux.sh | sh
@@ -142,7 +142,7 @@ curl -fsSL https://raw.githubusercontent.com/aiyu-ayaan/Unpack/master/scripts/in
 
 With no stable release yet, it falls back to the newest beta, then alpha, and says so. Re-run it to update.
 
-It checks what the system has, not which distro it is: any x86_64 glibc distro works. If `libfuse2` is missing (recent Ubuntu, Debian and Fedora do not ship it) the AppImage runs in extract-and-run mode, so nothing has to be installed first. musl systems such as Alpine cannot run the AppImage and are told so; build from source there. A `.deb` or `.rpm` from the release page works too.
+It checks what the system has, not which distro it is: any x86_64 or aarch64 glibc distro works. If `libfuse2` is missing (recent Ubuntu, Debian and Fedora do not ship it) the AppImage runs in extract-and-run mode, so nothing has to be installed first. musl systems such as Alpine cannot run the AppImage and are told so; build from source there. A `.deb` or `.rpm` from the release page works too.
 
 ## Requirements
 
