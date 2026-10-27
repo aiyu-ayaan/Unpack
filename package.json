@@ -2,7 +2,7 @@
   "name": "unpack-workspace",
   "private": true,
   "scripts": {
-    "dev": "pnpm --filter unpack tauri dev",
+    "dev": "pnpm --filter unpack tauri dev --config src-tauri/tauri.dev.conf.json",
     "dev:web": "pnpm --filter unpack dev",
     "build": "pnpm --filter unpack build",
     "tauri": "pnpm --filter unpack tauri",

@@ -30,14 +30,18 @@ fn xdg(var: &str, fallback: &str) -> PathBuf {
     }
 }
 
-/// `~/.local/share/unpack`
+/// Debug builds are the dev flavor: own data and cache dirs, so a build run from source never touches the
+/// database or settings of the installed app.
+const APP_DIR: &str = if cfg!(debug_assertions) { "unpack-dev" } else { "unpack" };
+
+/// `~/.local/share/unpack` (`unpack-dev` in debug builds)
 pub fn data_dir() -> PathBuf {
-    xdg("XDG_DATA_HOME", ".local/share").join("unpack")
+    xdg("XDG_DATA_HOME", ".local/share").join(APP_DIR)
 }
 
-/// `~/.cache/unpack`
+/// `~/.cache/unpack` (`unpack-dev` in debug builds)
 pub fn cache_dir() -> PathBuf {
-    xdg("XDG_CACHE_HOME", ".cache").join("unpack")
+    xdg("XDG_CACHE_HOME", ".cache").join(APP_DIR)
 }
 
 /// Variables the AppImage points at its bundled libraries and data. Handed on, they make host tools
