@@ -134,6 +134,10 @@ pub fn now() -> i64 {
         .unwrap_or(0)
 }
 
+/// Tests that change HOME must hold this so others reading it don't race.
+#[cfg(test)]
+pub static TEST_ENV: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[cfg(test)]
 mod tests {
     use super::without_appdir;
@@ -146,7 +150,3 @@ mod tests {
         assert_eq!(without_appdir("/usr/bin:/bin", "/tmp/.mount_X").as_deref(), Some("/usr/bin:/bin"));
     }
 }
-
-/// Tests that change HOME must hold this so others reading it don't race.
-#[cfg(test)]
-pub static TEST_ENV: std::sync::Mutex<()> = std::sync::Mutex::new(());
