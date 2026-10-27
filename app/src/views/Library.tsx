@@ -39,7 +39,7 @@ export default function Library({ version, onTask }: { version: number; onTask: 
   };
 
   const ql = q.toLowerCase();
-  const tracked = useMemo(() => apps.filter((a) => a.name.toLowerCase().includes(ql)), [apps, ql]);
+  const tracked = useMemo(() => apps.filter((a) => a.status === "installed" && a.name.toLowerCase().includes(ql)), [apps, ql]);
   const system = useMemo(() => (sys ?? []).filter((p) => p.name.toLowerCase().includes(ql)), [sys, ql]);
 
   return (

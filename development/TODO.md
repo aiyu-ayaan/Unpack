@@ -51,6 +51,7 @@ Legend: `[x]` done, `[ ]` open, `[~]` partly done. Update this file in the same 
 - [x] Replayed the release pipeline locally (plan, version bump, changelog, bundles, name checks, notes); found that rpm rejects pre-release versions, so rpm is stable-only
 - [x] Launch film `Unpack.mp4` (vertical, 2K) and README walkthrough GIF `res/unpack.gif`
 - [x] **Bug (fixed):** records saved before the .deb name fix still hold the file name, so Library > Remove failed with `apt` exit 100 on prod. Remove now reads the real name from the saved .deb, and says plainly when apt has no such package **(unverified on a fresh alpha.1 record)**
+- [x] Library > Installed with Unpack lists installed apps only; removed ones stay in History
 - [x] App flavor: debug builds use `~/.local/share/unpack-dev` and `~/.cache/unpack-dev`; `pnpm dev` uses `tauri.dev.conf.json` (own identifier, "Unpack (dev)" title), so a dev run never touches the installed app
 - [x] **Bug (fixed):** Electron AppImages (AFFiNE) did nothing from the menu: "The SUID sandbox helper binary was found, but is not configured correctly" because AppArmor restricts user namespaces; the menu entry now adds `--no-sandbox` with a plan warning. Not yet seen working on a clean install **(unverified)**
 - [ ] Allow Actions to create PRs in the repo settings, push, and run the first `!alpha` release; fix what the first real run shows **(unverified)**
