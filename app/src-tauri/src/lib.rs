@@ -123,7 +123,8 @@ async fn uninstall_app(app_id: i64, app: AppHandle, state: Shared<'_>) -> Result
         let emit = |stream: &str, line: &str| {
             let _ = app.emit("plan-log", LogLine { plan_id: "uninstall", stream, line });
         };
-        let r = runner::uninstall(&rec.uninstall, &system::detect(), &emit);
+        let healed = runner::heal(&rec.uninstall, rec.source.as_deref());
+        let r = runner::uninstall(&healed, &system::detect(), &emit);
         let db = st.store.lock().map_err(|e| e.to_string())?;
         Ok(match r {
             Ok(()) => {

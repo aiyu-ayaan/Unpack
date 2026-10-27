@@ -408,8 +408,29 @@ pub fn safe_to_remove(p: &Path) -> bool {
         && removable_roots().iter().any(|r| p.starts_with(r) && p != r)
 }
 
+/// Whether dpkg knows `name` as an installed package; true when it can't be asked.
+fn apt_installed(name: &str) -> bool {
+    !has("dpkg-query") || capture("dpkg-query", &["-W", "-f", "${Status}", name]).is_ok_and(|s| s.ends_with("installed"))
+}
+
+/// Records made before the .deb name check stored the file name instead of the package name, so apt can't find
+/// them. Read the real name from the saved .deb when it is still there.
+pub fn heal(u: &Uninstall, source: Option<&str>) -> Uninstall {
+    if let (Uninstall::Manager { manager, ident, user }, Some(src)) = (u, source) {
+        if manager == "apt" && !apt_installed(ident) && src.ends_with(".deb") && Path::new(src).is_file() {
+            if let Some(name) = capture("dpkg-deb", &["-f", src, "Package"]).ok().map(|o| o.trim().to_string()).filter(|n| !n.is_empty()) {
+                return Uninstall::Manager { manager: manager.clone(), ident: name, user: *user };
+            }
+        }
+    }
+    u.clone()
+}
+
 pub fn uninstall(u: &Uninstall, sys: &System, emit: Emit) -> Result<(), String> {
     match u {
+        Uninstall::Manager { manager, ident, .. } if manager == "apt" && !apt_installed(ident) => {
+            Err(format!("apt has no installed package called \"{ident}\", so there is nothing for it to remove. Look the app up in Everything on this computer."))
+        }
         Uninstall::Manager { manager, ident, user } => {
             let (p, a, root) = removal(manager, ident, *user)?;
             emit("info", &format!("$ {}", display(&p, &a)));
