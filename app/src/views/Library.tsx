@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { RefreshCw, Search, Trash2, XCircle } from "lucide-react";
+import { FolderX, RefreshCw, Search, Trash2, XCircle } from "lucide-react";
 import { api, errText, when, type App, type LogLine, type SysPkg } from "../api";
 import type { Task } from "../App";
 import { Log } from "../components/Log";
@@ -16,6 +16,8 @@ export default function Library({ version, onTask }: { version: number; onTask: 
   const [confirm, setConfirm] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [log, setLog] = useState<LogLine[]>([]);
+  /** Folders a just-removed app left behind, offered for removal. */
+  const [left, setLeft] = useState<{ id: number; name: string; paths: string[] } | null>(null);
 
   const loadApps = useCallback(() => api.apps().then(setApps).catch((e) => setMsg(errText(e))), []);
   const loadSys = useCallback(() => { setSys(null); api.scan().then(setSys).catch((e) => { setMsg(errText(e)); setSys([]); }); }, []);
@@ -27,14 +29,27 @@ export default function Library({ version, onTask }: { version: number; onTask: 
     return () => { void un.then((f) => f()); };
   }, []);
 
-  const remove = async (key: string, name: string, fn: () => Promise<{ ok: boolean; error: string | null }>) => {
-    setBusy(key); setConfirm(null); setMsg(null); setLog([]);
+  const remove = async (key: string, name: string, fn: () => Promise<{ ok: boolean; error: string | null; app_id: number | null }>, tracked = false) => {
+    setBusy(key); setConfirm(null); setMsg(null); setLog([]); setLeft(null);
     onTask({ label: `Removing ${name}`, progress: null });
     try {
       const r = await fn();
       if (!r.ok) setMsg(r.error ?? "Could not remove");
+      if (r.ok && tracked && r.app_id !== null) {
+        const id = r.app_id;
+        const paths = await api.leftovers(id).catch(() => []);
+        if (paths.length) setLeft({ id, name, paths });
+      }
       await loadApps(); if (tab === "system") loadSys();
     } catch (e) { setMsg(errText(e)); }
+    setBusy(null); onTask(null);
+  };
+
+  const purge = async () => {
+    if (!left) return;
+    setBusy("leftovers"); setMsg(null); setLog([]);
+    onTask({ label: `Cleaning up after ${left.name}`, progress: null });
+    try { await api.removeLeftovers(left.id); setLeft(null); } catch (e) { setMsg(errText(e)); }
     setBusy(null); onTask(null);
   };
 
@@ -63,6 +78,16 @@ export default function Library({ version, onTask }: { version: number; onTask: 
         </label>
       </div>
       {msg && <Banner tone="bad" icon={<XCircle className="h-4 w-4" />}>{msg}</Banner>}
+      {left && (
+        <Banner tone="info" icon={<FolderX className="h-4 w-4" />}>
+          <div>{left.name} is removed. It left its settings, cache or data here:</div>
+          <ul className="my-1.5 font-mono text-xs">{left.paths.map((p) => <li key={p}>{p}</li>)}</ul>
+          <div className="mt-2 flex gap-2">
+            <button className="btn btn-danger" disabled={busy !== null} onClick={() => void purge()}>Remove these too</button>
+            <button className="btn" onClick={() => setLeft(null)}>Keep them</button>
+          </div>
+        </Banner>
+      )}
       {busy && <><Progress value={null} label="Removing" /><Log lines={log} running /></>}
 
       <div className="card divide-y divide-line overflow-hidden">
@@ -70,7 +95,7 @@ export default function Library({ version, onTask }: { version: number; onTask: 
           <Row key={a.id} title={a.name} sub={`${a.version ?? ""} ${a.kind} · ${when(a.installed_at)}`.trim()} status={a.status}
             how={a.uninstall.type === "manager" ? `via ${a.uninstall.manager}` : a.uninstall.type === "files" ? `${a.uninstall.paths.length} files tracked` : a.uninstall.type === "manual" ? "remove manually" : ""}
             action={a.status === "installed" && a.uninstall.type !== "manual" && (
-              <Remove id={`a${a.id}`} busy={busy} confirm={confirm} setConfirm={setConfirm} run={() => remove(`a${a.id}`, a.name, () => api.uninstall(a.id))} />)} />
+              <Remove id={`a${a.id}`} busy={busy} confirm={confirm} setConfirm={setConfirm} run={() => remove(`a${a.id}`, a.name, () => api.uninstall(a.id), true)} />)} />
         ))}</div>}
         {tab === "tracked" && tracked.length === 0 && <Empty>Nothing here yet. Install something and it will show up.</Empty>}
         {tab === "system" && sys === null && <div className="flex flex-col gap-3 px-5 py-8"><Progress value={null} label="Scanning packages" /><div className="text-center text-dim">Looking for installed packages…</div></div>}

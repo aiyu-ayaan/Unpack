@@ -30,15 +30,21 @@ export type UpdateInfo = { version: string; channel: Channel; self_install: bool
 export type Offer = { version: string; url: string; notes: string | null };
 export type Link = "repo" | "issues" | "developer" | "site";
 export type LogLine = { plan_id: string; stream: string; line: string };
+export type Fetched = { done: number; total: number | null };
 
 export const api = {
   system: () => invoke<SystemInfo>("detect_system"),
   analyze: (input: string, allowHttp: boolean) => invoke<Plan>("analyze", { input, allowHttp }),
+  cancelAnalyze: () => invoke<void>("cancel_analyze"),
+  onAnalyzeProgress: (fn: (p: Fetched) => void) => listen<Fetched>("analyze-progress", (e) => fn(e.payload)),
   execute: (planId: string, asRoot: boolean) => invoke<RunResult>("execute", { planId, asRoot }),
   apps: () => invoke<App[]>("list_apps"),
   history: (appId: number | null = null) => invoke<Event[]>("history", { appId }),
   scan: () => invoke<SysPkg[]>("scan_system"),
   uninstall: (appId: number) => invoke<RunResult>("uninstall_app", { appId }),
+  /** Settings, cache and data folders a removed app left behind. */
+  leftovers: (appId: number) => invoke<string[]>("leftovers", { appId }),
+  removeLeftovers: (appId: number) => invoke<string[]>("remove_leftovers", { appId }),
   uninstallSystem: (manager: string, ident: string) =>
     invoke<RunResult>("uninstall_system", { manager, ident }),
   updateInfo: () => invoke<UpdateInfo>("update_info"),

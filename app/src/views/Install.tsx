@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { AlertTriangle, Check, CheckCircle2, ChevronRight, Copy, FileDown, Info, Loader2, Lock, Package, Play, Sparkles, X, XCircle } from "lucide-react";
-import { api, errText, type LogLine, type Plan } from "../api";
+import { api, errText, type Fetched, type LogLine, type Plan } from "../api";
 import type { Task } from "../App";
 import { Log } from "../components/Log";
 import { Banner, PageHeader, Progress } from "../components/ui";
@@ -22,6 +22,8 @@ function activeStep(plan: Plan, lines: LogLine[]): number {
   return at;
 }
 
+const mb = (b: number) => `${(b / 1048576).toFixed(1)} MB`;
+
 export default function Install({ onInstalled, onTask }: { onInstalled: () => void; onTask: (t: Task) => void }) {
   const [text, setText] = useState("");
   const [phase, setPhase] = useState<Phase>("idle");
@@ -34,16 +36,22 @@ export default function Install({ onInstalled, onTask }: { onInstalled: () => vo
   const [drag, setDrag] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [fetched, setFetched] = useState<Fetched | null>(null);
   const planId = useRef<string | null>(null);
 
   const analyze = useCallback(async (input: string) => {
     if (!input.trim()) return;
-    setPhase("analyzing"); setError(null); setNotes([]); setPlan(null); setAsRoot(false); setShowPreview(false);
+    setPhase("analyzing"); setError(null); setNotes([]); setPlan(null); setAsRoot(false); setShowPreview(false); setFetched(null);
     try {
       const p = await api.analyze(input.trim(), allowHttp);
       planId.current = p.id; setPlan(p); setPhase("review");
-    } catch (e) { setError(errText(e)); setPhase("idle"); }
+    } catch (e) { const m = errText(e); setError(m === "Cancelled" ? null : m); setPhase("idle"); }
   }, [allowHttp]);
+
+  useEffect(() => {
+    const un = api.onAnalyzeProgress(setFetched);
+    return () => { void un.then((f) => f()); };
+  }, []);
 
   useEffect(() => {
     const un = getCurrentWebview().onDragDropEvent((e) => {
@@ -70,10 +78,10 @@ export default function Install({ onInstalled, onTask }: { onInstalled: () => vo
   const waitingRoot = phase === "running" && lines.at(-1)?.line === "Waiting for the admin password…";
 
   useEffect(() => {
-    if (phase === "analyzing") onTask({ label: "Checking…", progress: null });
+    if (phase === "analyzing") onTask({ label: fetched?.done ? "Downloading…" : "Checking…", progress: fetched?.total ? fetched.done / fetched.total : null });
     else if (phase === "running" && plan) onTask({ label: waitingRoot ? "Waiting for admin password" : `Installing ${plan.name}`, progress });
     else onTask(null);
-  }, [phase, plan, progress, waitingRoot, onTask]);
+  }, [phase, plan, progress, waitingRoot, fetched, onTask]);
 
   const run = async () => {
     if (!plan) return;
@@ -109,7 +117,13 @@ export default function Install({ onInstalled, onTask }: { onInstalled: () => vo
               {phase === "analyzing" ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Sparkles className="h-4 w-4" aria-hidden />} Check
             </button>
           </form>
-          {phase === "analyzing" && <div className="mt-3"><Progress value={null} label="Analyzing" /></div>}
+          {phase === "analyzing" && (
+            <div className="mt-3 flex items-center gap-3">
+              <div className="flex-1"><Progress value={fetched?.total ? fetched.done / fetched.total : null} label={fetched?.done ? "Downloading" : "Analyzing"} /></div>
+              {!!fetched?.done && <span className="text-xs tabular-nums text-dim">{mb(fetched.done)}{fetched.total ? ` of ${mb(fetched.total)}` : ""}</span>}
+              <button type="button" className="btn btn-ghost" onClick={() => void api.cancelAnalyze()}><X className="h-4 w-4" aria-hidden /> Cancel</button>
+            </div>
+          )}
           <label className="mt-3 flex cursor-pointer items-center gap-2 text-xs text-dim">
             <input type="checkbox" className="accent-[var(--accent)]" checked={allowHttp} onChange={(e) => setAllowHttp(e.target.checked)} /> Allow unencrypted http:// links (not recommended)
           </label>
