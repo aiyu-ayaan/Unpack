@@ -20,7 +20,11 @@ Unpack/
     src/                    React UI
     src-tauri/              Rust backend
       src/
-        lib.rs              Tauri setup, shared state, command registration
+        main.rs             no arguments: the window (gui feature); any argument: cli::main
+        lib.rs              module list; re-exports gui::run when the `gui` feature is on
+        gui.rs              Tauri setup, shared state, command registration (feature `gui`)
+        cli.rs              `unpack <command>`: check, install, list, remove, scan, history, system
+        ops.rs              install/uninstall with their SQLite record, leftover folders; shared by gui and cli
         util.rs             which(), capture(), XDG dirs, display quoting
         analyze.rs          input string → Plan (download/clone/list, recursion into wrappers)
         system.rs           distro / package manager / helper detection
@@ -100,18 +104,24 @@ DB path: `$XDG_DATA_HOME/unpack/unpack.db` (default `~/.local/share/unpack/`). D
 | Command | Purpose |
 |---|---|
 | `detect_system()` | Return `System` |
-| `analyze(input, allow_http)` | Parse, fetch/clone, sniff, build `Plan`, store it by id |
+| `analyze(input, allow_http)` | Parse, fetch/clone, sniff, build `Plan`, store it by id; emits `analyze-progress` while downloading |
+| `cancel_analyze()` | Stop the running analyze: the call returns `Cancelled` at once, the worker stops at its next check and removes its work folder |
 | `execute(plan_id, as_root)` | Run the stored plan, emit `plan-log`, record app + event in SQLite |
 | `list_apps()` | Tracked apps from SQLite |
 | `history(app_id?)` | Event log |
 | `scan_system()` | Packages the system managers report (read-only) |
 | `uninstall_app(app_id)` | Run the stored `Uninstall` spec, mark row `removed` |
+| `leftovers(app_id)` / `remove_leftovers(app_id)` | Settings/cache/data folders named after the app (`~/.config`, `~/.cache`, `~/.local/share`, `~/.local/state`, `~/.var/app`); removal recomputes the list, the page never sends paths |
 | `uninstall_system(manager, ident)` | Remove a package Unpack did not install (name is validated) |
 | `update_info()` / `update_check()` | Installed version, channel; look for a newer release (see [07-updates.md](07-updates.md)) |
 | `update_install()` / `update_set_channel(c)` / `update_skip()` | Download the offer from the last check; remember channel; remember "Later" |
 | `open_link(which)` | Open one of Unpack's own links (`repo`, `issues`, `developer`, `site`); the page never sends an address |
 
-Events: `plan-log {plan_id, stream, line}` (`plan_id` is `"uninstall"` during removals), `plan-done <plan_id>`, `update-progress <0..1 | null>`.
+Events: `plan-log {plan_id, stream, line}` (`plan_id` is `"uninstall"` during removals), `plan-done <plan_id>`, `analyze-progress {done, total}` (bytes), `update-progress <0..1 | null>`.
+
+## Command line
+
+The same binary takes commands: `unpack install file.deb`, `unpack list`, `unpack remove 3 --purge` (`unpack --help` for all). It uses the same `analyze → Plan → ops::install` path and the same database as the window. Built with `--no-default-features` it has no Tauri or WebKitGTK at all; `scripts/build-cli.sh` builds that as one static musl binary (`unpack-cli_<version>_<arch>`), published with each release. In a terminal, root steps use `sudo` (it asks on the terminal) instead of a `pkexec` window; without a terminal nothing is asked and `--yes` is required.
 
 ## Implementation notes (as built)
 
@@ -121,7 +131,7 @@ Events: `plan-log {plan_id, stream, line}` (`plan_id` is `"uninstall"` during re
 - `Files` removal only touches `~/.local`, `~/Applications`, `~/Unpacked`, `/opt`, `/usr/local` (`runner::safe_to_remove`). Paths needing root go through one `pkexec rm -rf --`.
 - Native package-recipe builds (`PKGBUILD`, `debian/`, `.dsc`) end in an `InstallBuilt` step: the produced package is planned and installed like a downloaded one, so the package manager owns removal.
 - Plans keep a SHA-256 of the analysed file; `execute` re-hashes and aborts on mismatch.
-- Work folders live in `~/.cache/unpack/work/<plan-id>`; folders older than a day are deleted at startup.
+- Work folders live in `~/.cache/unpack/work/<plan-id>`. A failed or cancelled analyze and a successful install remove theirs; anything left (a failed install, kept for a retry) is deleted at the next start once a day old.
 
 ## UI
 
@@ -129,7 +139,7 @@ Views: **Install** (drop zone + input; plan review; live log), **Library** (trac
 
 ## Testing
 
-- Rust unit tests: `sniff` (byte fixtures), `input` (curl/wget/git parsing), `system` (os-release parsing), `plan` (kind × family matrix → expected commands), `archive` (path-traversal rejection), `trace` (diff).
-- `cargo test` must pass before each commit that touches Rust.
+- Rust unit tests: `sniff` (byte fixtures), `input` (curl/wget/git parsing), `system` (os-release parsing), `plan` (kind × family matrix → expected commands), `archive` (path-traversal rejection), `trace` (diff), `ops` (leftovers), `cli` (flags, app lookup).
+- `pnpm test` (`cargo test --no-default-features`, no WebKit needed) must pass before each commit that touches Rust.
 - Frontend: `pnpm build` type-checks.
-- Manual matrix of real distros in VMs/containers: see TODO "Verification".
+- Real distros: `scripts/test-distros.sh` builds the static CLI from the checkout and runs `tests/distro/run.sh` in Docker on Debian 12, Ubuntu 24.04, Fedora 42, Rocky 9, openSUSE Tumbleweed, Arch and Alpine 3.24: a native package (`tree`) installed, tracked, removed with leftovers purged; a traced script; a portable archive; an https download; refusals; a non-root user with no admin tool. Images it pulled are removed afterwards (`--keep` to keep them). CI runs the same matrix on every push.

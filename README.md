@@ -19,7 +19,8 @@ SQLite, and can uninstall it later. Made for people new to Linux, who should not
 - **Detects capabilities, not distro names**: looks for the package managers and helpers that exist, and for a read-only base system
 - **Live progress**: per-step install progress, an Output panel that streams as it runs, and a status bar with the running task
 - **One admin prompt**: root steps are merged into a single `pkexec` call; if no password window can appear, Unpack shows the exact `sudo` command to run instead
-- **Tracked and reversible**: every install records how to remove it; the Library also lists packages you installed some other way
+- **Tracked and reversible**: every install records how to remove it, and removal offers to delete the settings and cache folders the app left behind; the Library also lists packages you installed some other way
+- **Desktop app or command line**: the same engine as `unpack install file.deb`, `unpack list`, `unpack remove`; a static command-line build runs on any distro, even without a desktop
 - **Updates**: checks GitHub releases on a stable, beta or alpha channel; an AppImage updates itself, a `.deb`/`.rpm` is downloaded and opened in your installer
 - **History** of everything Unpack did and when
 - **Safe by design**: the UI never sends command lines, archives are checked for path traversal, files are re-hashed before running, and `--allow-untrusted` style flags are never passed silently
@@ -147,6 +148,16 @@ curl -fsSL https://raw.githubusercontent.com/aiyu-ayaan/Unpack/master/scripts/in
 
 With no stable release yet, it falls back to the newest beta, then alpha, and says so. Re-run it to update.
 
+### Command line only
+
+No desktop, a server, or you just prefer a terminal: one static binary for x86_64 or aarch64 that runs on any distro (glibc or musl).
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/aiyu-ayaan/Unpack/master/scripts/install-linux.sh | sh -s -- --cli
+```
+
+It goes to `~/.local/share/unpack/unpack-cli` with an `unpack` command in `~/.local/bin`. Or download `unpack-cli_<version>_<arch>` from the [releases page](https://github.com/aiyu-ayaan/Unpack/releases), `chmod +x` it and run it. The desktop app's own `unpack` command takes the same commands, so you do not need both.
+
 It checks what the system has, not which distro it is: any x86_64 or aarch64 glibc distro works. If `libfuse2` is missing (recent Ubuntu, Debian and Fedora do not ship it) the AppImage runs in extract-and-run mode, so nothing has to be installed first. musl systems such as Alpine cannot run an AppImage, so there the script installs the `-musl.tar.gz` the release builds on Alpine (WebKitGTK and GTK come from `apk`, which asks for `sudo` or `doas`). With no such file in the releases, or with `--from-source`, it builds Unpack from source with `scripts/build-musl.sh`, which takes a while. A `.deb` or `.rpm` from the release page works too.
 
 ## Requirements
@@ -187,6 +198,21 @@ pnpm lint                        # clippy
 5. **System** shows the detected distro, package managers, runtimes and missing helper tools.
 6. **History** is the event log. The sun/moon button at the bottom of the left bar switches between light and dark.
 
+## Command line
+
+```bash
+unpack check ~/Downloads/app.deb          # show the plan; nothing runs
+unpack install ~/Downloads/app.deb        # show the plan, ask, install, track it
+unpack install 'curl -fsSL https://example.com/install.sh | sh'
+unpack list                               # what Unpack installed (--all: removed ones too)
+unpack remove app                         # by name or id; --purge also deletes its settings and cache folders
+unpack scan                               # every package the system's managers report
+unpack history                            # what Unpack did
+unpack system                             # what it detected about this computer
+```
+
+`--yes` skips the question (needed when there is no terminal, such as in a script), `--json` gives output for scripts, `--root` runs the main step as administrator when the plan allows it. In a terminal, admin steps ask for your password through `sudo`. Exit codes: `0` done, `1` error, `2` the plan can't be run, `3` you said no. The command line and the window share one database, so an app installed in one shows up in the other.
+
 ## Where files go
 
 | Path | Purpose |
@@ -214,10 +240,8 @@ whether to trust the source.
 ## Known gaps
 
 - Not yet run end to end on real distros (Debian/Ubuntu, Fedora, openSUSE, Arch, Alpine, immutable systems)
-- Downloads have no byte progress; install progress advances per step
-- `analyze` on a very large archive or directory has no cancel button
 - Files written outside `~/.local`, `/opt` and `/usr/local` by a script are not traced, so its removal may be `Manual`
-- Leftover config and cache folders are not cleaned up after uninstall
+- Leftover folders are found by the app's name only (`~/.config/<name>` and the like); folders an app names differently are not offered
 
 The full list is in [`development/TODO.md`](development/TODO.md).
 
@@ -228,6 +252,10 @@ The full list is in [`development/TODO.md`](development/TODO.md).
 ## Tests
 
 ```bash
-pnpm test
-pnpm build
+pnpm test                          # backend unit tests (no WebKit needed)
+pnpm build                         # type-check and build the frontend
+scripts/test-distros.sh            # this checkout on real distros in Docker
+scripts/test-distros.sh arch alpine --keep
 ```
+
+`scripts/test-distros.sh` builds the static command line from your checkout (`scripts/build-cli.sh`, in an Alpine container; the build cache stays in `app/src-tauri/target/cli-musl`, so the next run is quick), then installs, tracks and removes real packages with it on Debian 12, Ubuntu 24.04, Fedora 42, Rocky Linux 9, openSUSE Tumbleweed, Arch and Alpine 3.24. Logs go to `test-results/`. Afterwards it removes every image it pulled; images you already had are left alone. CI runs the same matrix on every push.

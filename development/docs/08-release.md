@@ -45,7 +45,9 @@ By hand: Actions → Release → Run workflow, with mode `pr` and a marker, `rel
 ## What a release contains
 `pnpm tauri build --bundles deb,appimage` (plus `rpm` on stable releases only: an rpm version cannot contain `-`, found by running the pipeline locally) on `ubuntu-22.04` (x86_64) and `ubuntu-22.04-arm` (aarch64), the oldest supported runners so the AppImage runs on more distros, after `pnpm test`. The arm runner is free only for public repositories **(unverified on a real run)**. The build fails before publishing if the AppImage or deb is not named `*_<version>_amd64.*` / `*_<version>_aarch64.AppImage` and `*_<version>_arm64.deb`, because the updater finds them by that name (see [07-updates.md](07-updates.md)). Alpha and beta releases are marked *pre-release* on GitHub. Notes are the `## vX` section of `CHANGELOG.md`, built from the commit subjects since the last tag; edit it in the release PR if it reads badly.
 
-Alpine (musl) gets its own job, `build-musl`: `scripts/build-musl.sh` runs in an `alpine:3.24` container and produces `Unpack_<version>_<arch>-musl.tar.gz` (the binary and its icon), which `scripts/install-linux.sh` downloads on musl systems.
+Alpine (musl) gets its own job, `build-musl`: `scripts/build-musl.sh` runs in an `alpine:3.24` container and produces `Unpack_<version>_<arch>-musl.tar.gz` (the binary and its icon), which `scripts/install-linux.sh` downloads on musl systems. The same container runs `scripts/build-cli.sh`, producing `unpack-cli_<version>_<arch>`: the static command line, which runs on any distro and is what `install-linux.sh --cli` downloads.
+
+Build time: `pnpm test` builds without the `gui` feature, so the test step no longer compiles Tauri and WebKit bindings a second time in debug.
 
 ## One-time repository setup
 - Settings → Actions → General → **Allow GitHub Actions to create and approve pull requests** (or add a `RELEASE_TOKEN` secret with a personal access token).

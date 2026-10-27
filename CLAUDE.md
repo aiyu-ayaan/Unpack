@@ -19,8 +19,10 @@ Run from the repo root (a pnpm workspace; root scripts forward to `app/`):
 - `pnpm dev` — run the dev flavor (own `unpack-dev` data/cache dirs and identifier, so the installed app is untouched; starts Vite and the desktop window); `pnpm dev:web` — frontend only
 - `pnpm build` — type-check + build frontend
 - `pnpm tauri build --bundles deb` — release `.deb` (bundle category must be a valid freedesktop one, e.g. `Utility`)
-- `pnpm test` — backend tests, `cargo test` (must pass before committing Rust changes)
-- `pnpm lint` — `cargo clippy`
+- `pnpm test` — backend tests, `cargo test --no-default-features` (no WebKit; must pass before committing Rust changes)
+- `scripts/build-cli.sh` — static musl CLI into `dist-cli/` (in an alpine container; cache stays on the host)
+- `scripts/test-distros.sh [--keep] [distro...]` — that CLI tested in Docker on 7 distros; removes the images it pulled
+- `pnpm lint` — `cargo clippy` (desktop build; CI also runs it with `--no-default-features` and `-D warnings`)
 - System build deps (Debian/Ubuntu): `libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev build-essential`
 
 ## Rules
@@ -39,3 +41,5 @@ Run from the repo root (a pnpm workspace; root scripts forward to `app/`):
 - Don't `pkill -f vite` from a Claude shell; the pattern matches the shell's own command line. Kill by PID.
 - Tests that change `HOME`/`XDG_*` must hold `util::TEST_ENV`.
 - Debug binary loads `http://localhost:1420`; start `pnpm dev` first.
+- `unpack` with no arguments opens the window; any argument goes to `cli.rs`. Tauri code lives only in `gui.rs` behind the `gui` feature.
+- busybox (Alpine) has its own `tree` applet: check removal with the package manager, not `command -v`.
