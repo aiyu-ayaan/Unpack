@@ -13,7 +13,6 @@ pass() { PASS=$((PASS + 1)); echo "PASS: $*"; }
 fail() { FAIL=$((FAIL + 1)); echo "FAIL: $*"; }
 # check "<name>" <command...>: passes when the command exits 0.
 check() { name="$1"; shift; if "$@" >/tmp/out 2>&1; then pass "$name"; else fail "$name"; sed 's/^/    | /' /tmp/out | tail -n 25; fi; }
-q() { "$@" >/dev/null 2>&1; }
 
 W=/work
 mkdir -p "$W" && cd "$W" || exit 99
@@ -97,8 +96,9 @@ head -c 4096 /dev/zero >"$W/junk.bin"
 check "unknown file: exit 2" sh -c 'unpack check '"$W"'/junk.bin; [ $? -eq 2 ]'
 check "not a terminal: install asks for --yes" sh -c 'unpack install '"$W"'/hello-install.sh </dev/null 2>&1 | grep -q -- "--yes"'
 
-# ---- a normal user with no sudo or pkexec gets the command to run instead
-if [ -n "$PKG" ] && ! command -v sudo >/dev/null 2>&1 && ! command -v pkexec >/dev/null 2>&1; then
+# ---- a normal user with no admin prompt gets the command to run instead. Without a terminal the CLI never
+# uses sudo, so only pkexec (a password window) has to be absent.
+if [ -n "$PKG" ] && ! command -v pkexec >/dev/null 2>&1; then
   if command -v useradd >/dev/null 2>&1; then useradd -m tester; else adduser -D tester; fi
   cp "$PKG" /home/tester/ && chown tester /home/tester/"$(basename "$PKG")"
   check "user: no admin tool, says what to run" sh -c "su tester -s /bin/sh -c 'unpack install /home/tester/$(basename "$PKG") --yes' 2>&1 | grep -q 'sudo sh -c'"
