@@ -1,6 +1,6 @@
 [package]
 name = "unpack"
-version = "0.0.1-alpha.2"
+version = "0.0.1-alpha.3"
 description = "Install anything on any Linux distro, and uninstall it later"
 edition = "2021"
 

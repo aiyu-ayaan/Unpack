@@ -1,3 +1,22 @@
+## v0.0.1-alpha.3 (2026-10-27)
+
+- !alpha : Command line build, cancel and download progress, leftover cleanup, distro tests, faster CI
+- ci: cache apt downloads, skip Recommends, retry stalled mirrors, set job timeouts
+- test(distro): install util-linux for su on Fedora, show the user test's output when it fails
+- docs(todo): distro matrix passes in Docker; CLI, CI, cancel, progress and leftovers done
+- test(distro): run the no-admin-prompt user test where sudo exists too
+- docs: command line, CLI download, distro tests in Docker, cancel and leftovers
+- feat(release): publish the static CLI and install it with install-linux.sh --cli
+- style(util): keep the test lock above the test module (clippy)
+- ci: core tests without WebKit, desktop build, static CLI and the seven-distro matrix
+- test(distro): build the static CLI locally and test it in Docker on seven distros
+- feat(ui): cancel and download progress on Check, offer to remove leftovers after uninstall
+- feat(cli): unpack command line on the same core as the window
+- feat(library): hide removed apps from the installed list
+- docs: dev flavor, and log the Library remove failure on records with a file name
+- feat(flavor): run debug builds as a dev flavor with separate data, cache and identifier
+- fix(uninstall): find the real apt package name for records that stored the file name
+
 ## v0.0.1-alpha.2 (2026-10-26)
 
 - !alpha : Fix installs that do not open: AppImage library paths, Electron sandbox, missing libraries
