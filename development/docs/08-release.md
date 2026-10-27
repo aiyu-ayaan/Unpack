@@ -47,7 +47,13 @@ By hand: Actions → Release → Run workflow, with mode `pr` and a marker, `rel
 
 Alpine (musl) gets its own job, `build-musl`: `scripts/build-musl.sh` runs in an `alpine:3.24` container and produces `Unpack_<version>_<arch>-musl.tar.gz` (the binary and its icon), which `scripts/install-linux.sh` downloads on musl systems. The same container runs `scripts/build-cli.sh`, producing `unpack-cli_<version>_<arch>`: the static command line, which runs on any distro and is what `install-linux.sh --cli` downloads.
 
-Build time: `pnpm test` builds without the `gui` feature, so the test step no longer compiles Tauri and WebKit bindings a second time in debug.
+Build time. The v0.0.1-alpha.2 x86_64 job took 28 minutes, 23 of them in `apt-get install`: the runner's Azure mirror served 34 kB/s and one stalled download waited 7 minutes before apt retried. The Rust build itself took 23 s from the cache. Now:
+- the `.deb`s are cached between runs (`~/apt-cache`, keyed per runner), so apt downloads only on a cache miss;
+- `--no-install-recommends` drops about half the packages (GStreamer plugins, JACK and the like, which the bundle does not use);
+- a stalled download is retried after 30 s (`Acquire::http::Timeout`, `Acquire::Retries`), and jobs have a `timeout-minutes`;
+- `pnpm test` builds without the `gui` feature, and the trace test no longer walks the runner's multi-GB `/opt` and `/usr/local` (it took 78 s).
+
+`scripts/test-release-build.sh` replays the bundle job in an `ubuntu:22.04` container with the same apt line (read from this workflow), to try a change before pushing it.
 
 ## One-time repository setup
 - Settings → Actions → General → **Allow GitHub Actions to create and approve pull requests** (or add a `RELEASE_TOKEN` secret with a personal access token).

@@ -3,6 +3,10 @@ use std::path::{Path, PathBuf};
 
 /// Roots watched for files created by installers that no package manager tracks.
 pub fn roots() -> Vec<PathBuf> {
+    // Tests run with a throwaway HOME; CI runners keep gigabytes of toolchains in /opt and /usr/local.
+    if cfg!(test) {
+        return vec![crate::util::home().join(".local")];
+    }
     vec![crate::util::home().join(".local"), PathBuf::from("/opt"), PathBuf::from("/usr/local")]
 }
 
