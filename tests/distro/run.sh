@@ -27,7 +27,7 @@ case "$DISTRO" in
   fedora)
     NATIVE=dnf
     INSTALLED="rpm -q tree"
-    dnf -y -q install tar gzip >/dev/null && dnf -y -q download tree ;;
+    dnf -y -q install tar gzip util-linux >/dev/null && dnf -y -q download tree ;;
   rocky)
     NATIVE=dnf
     INSTALLED="rpm -q tree"
@@ -101,7 +101,7 @@ check "not a terminal: install asks for --yes" sh -c 'unpack install '"$W"'/hell
 if [ -n "$PKG" ] && ! command -v pkexec >/dev/null 2>&1; then
   if command -v useradd >/dev/null 2>&1; then useradd -m tester; else adduser -D tester; fi
   cp "$PKG" /home/tester/ && chown tester /home/tester/"$(basename "$PKG")"
-  check "user: no admin tool, says what to run" sh -c "su tester -s /bin/sh -c 'unpack install /home/tester/$(basename "$PKG") --yes' 2>&1 | grep -q 'sudo sh -c'"
+  check "user: no admin tool, says what to run" sh -c "su tester -s /bin/sh -c 'unpack install /home/tester/$(basename "$PKG") --yes' 2>&1 | tee /dev/stderr | grep -q 'sudo sh -c'"
 fi
 
 echo "== $DISTRO: $PASS passed, $FAIL failed"
