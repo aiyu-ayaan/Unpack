@@ -93,7 +93,7 @@ CREATE TABLE events (
 );
 ```
 
-DB path: `$XDG_DATA_HOME/unpack/unpack.db` (default `~/.local/share/unpack/`). Schema version tracked with `PRAGMA user_version`.
+DB path: `$XDG_DATA_HOME/unpack/unpack.db` (default `~/.local/share/unpack/`). Debug builds use `unpack-dev` in place of `unpack` (data and cache), so running from source never touches the installed app. Schema version tracked with `PRAGMA user_version`.
 
 ## Tauri commands
 
