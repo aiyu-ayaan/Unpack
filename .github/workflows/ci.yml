@@ -1,0 +1,103 @@
+# Checks every push and pull request. Fast first: the core and CLI build without WebKit in about a minute.
+#
+#   core     cargo test + clippy without the `gui` feature (no system libraries needed)
+#   app      frontend type-check/build and clippy of the desktop build
+#   cli      the static musl CLI (scripts/build-cli.sh), shared with the distro jobs
+#   distro   that CLI on Debian, Ubuntu, Fedora, Rocky, openSUSE, Arch and Alpine (scripts/test-distros.sh)
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0 # CI builds from a cache, not incrementally; this keeps the cache small
+
+jobs:
+  core:
+    name: Core tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri
+          key: core
+      - run: cargo test --no-default-features --manifest-path app/src-tauri/Cargo.toml
+      - run: cargo clippy --no-default-features --all-targets --manifest-path app/src-tauri/Cargo.toml -- -D warnings
+
+  app:
+    name: Desktop build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: System libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri
+          key: gui
+      - run: npm install -g pnpm@12
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: cargo clippy --all-targets --manifest-path app/src-tauri/Cargo.toml -- -D warnings
+
+  cli:
+    name: Static CLI
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            app/src-tauri/target/cli-musl
+            ~/.cargo/registry
+          key: cli-musl-${{ hashFiles('app/src-tauri/Cargo.lock') }}
+          restore-keys: cli-musl-
+      - run: scripts/build-cli.sh dist-cli
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unpack-cli
+          path: dist-cli/unpack-cli_*
+          retention-days: 3
+
+  distro:
+    name: ${{ matrix.distro }}
+    needs: cli
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        distro: [debian, ubuntu, fedora, rocky, opensuse, arch, alpine]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: unpack-cli
+          path: dist-cli
+      - run: chmod +x dist-cli/*
+      - run: scripts/test-distros.sh --no-build --keep ${{ matrix.distro }}
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: distro-log-${{ matrix.distro }}
+          path: test-results/
+          retention-days: 7
