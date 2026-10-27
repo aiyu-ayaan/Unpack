@@ -6,13 +6,20 @@ edition = "2021"
 
 [lib]
 name = "unpack_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+# Desktop Linux only: the mobile library types only added link time.
+crate-type = ["rlib"]
+
+# `gui` (default) is the desktop window. Without it (`--no-default-features`) the same binary is the
+# command line only: no WebKitGTK, builds in a fraction of the time, and links statically on musl.
+[features]
+default = ["gui"]
+gui = ["dep:tauri", "dep:tauri-build"]
 
 [build-dependencies]
-tauri-build = { version = "2", features = [] }
+tauri-build = { version = "2", features = [], optional = true }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = [], optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rusqlite = { version = "0.32", features = ["bundled"] }
@@ -22,3 +29,10 @@ ureq = "2"
 walkdir = "2"
 tempfile = "3"
 thiserror = "1"
+
+# Faster local builds: dependencies keep no debug info, so the debug binary links quicker.
+[profile.dev.package."*"]
+debug = false
+
+[profile.dev]
+debug = "line-tables-only"

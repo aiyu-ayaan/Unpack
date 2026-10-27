@@ -12,6 +12,10 @@ use std::sync::mpsc;
 
 pub type Emit<'a> = &'a dyn Fn(&str, &str);
 
+/// Set by the command line when it runs in a terminal: root steps ask for the password with `sudo` there
+/// instead of a `pkexec` window.
+pub static TERMINAL_SUDO: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 fn pump<R: Read + Send + 'static>(r: R, stream: &'static str, tx: mpsc::Sender<(&'static str, String)>) -> std::thread::JoinHandle<()> {
     std::thread::spawn(move || {
         let mut rd = BufReader::new(r);
@@ -84,6 +88,14 @@ fn run_root(group: &[RootCmd], sys: &System, emit: Emit) -> Result<(), String> {
         let mut cmd = crate::util::command("sh");
         cmd.args(["-c", &full]);
         return run_command(cmd, emit);
+    }
+    if TERMINAL_SUDO.load(std::sync::atomic::Ordering::Relaxed) {
+        if let Some(sudo) = which("sudo") {
+            // sudo reads the password from the terminal itself, so the piped output stays as it is.
+            let mut cmd = crate::util::command(sudo);
+            cmd.args(["sh", "-c", &full]);
+            return run_command(cmd, emit);
+        }
     }
     let Some(pk) = which("pkexec") else {
         return Err(format!("Admin rights are needed but `pkexec` is missing. Run this in a terminal:\n  {sudo_hint}"));

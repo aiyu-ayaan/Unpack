@@ -4,8 +4,8 @@ use crate::input::{self, Source};
 use crate::plan::{self, Input, Meta, Plan};
 use crate::sniff::{sniff, Archive, Kind};
 use crate::system::System;
-use crate::util::{cache_dir, capture, has, now};
-use crate::{fetch};
+use crate::fetch::{self, Progress, CANCELLED};
+use crate::util::{cache_dir, capture_until, has, now};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -33,24 +33,36 @@ pub fn clean_old_work() {
     }
 }
 
-pub fn analyze(text: &str, sys: &System, allow_http: bool) -> Result<Plan, String> {
+/// `progress` reports download bytes and is asked between stages; returning false cancels. A cancelled or
+/// failed analyze removes its work folder.
+pub fn analyze(text: &str, sys: &System, allow_http: bool, progress: Progress) -> Result<Plan, String> {
     let id = new_id();
     let work = work_dir(&id)?;
-    let (source_str, sha, pipe) = (text.trim().to_string(), None::<String>, false);
-    let mut plan = match input::parse(text)? {
+    let r = analyze_in(text, sys, allow_http, progress, &work).and_then(|p| if progress(0, None) { Ok(p) } else { Err(CANCELLED.into()) });
+    match r {
+        Ok(mut plan) => {
+            plan.id = id;
+            Ok(plan)
+        }
+        Err(e) => {
+            let _ = std::fs::remove_dir_all(&work);
+            Err(e)
+        }
+    }
+}
+
+fn analyze_in(text: &str, sys: &System, allow_http: bool, progress: Progress, work: &Path) -> Result<Plan, String> {
+    match input::parse(text)? {
         Source::File(p) => {
             let sha = fetch::sha256_file(&p).map_err(|e| format!("Can't read {}: {e}", p.display()))?;
-            from_file(&p, sys, &work, Meta { source: p.display().to_string(), sha256: Some(sha), pipe_to_shell: false }, 0)?
+            from_file(&p, sys, work, Meta { source: p.display().to_string(), sha256: Some(sha), pipe_to_shell: false }, 0)
         }
         Source::Url { url, pipe_to_shell } => {
-            let d = fetch::download(&url, &work, allow_http)?;
-            from_file(&d.path, sys, &work, Meta { source: d.final_url, sha256: Some(d.sha256), pipe_to_shell }, if pipe_to_shell { 100 } else { 0 })?
+            let d = fetch::download(&url, work, allow_http, progress)?;
+            from_file(&d.path, sys, work, Meta { source: d.final_url, sha256: Some(d.sha256), pipe_to_shell }, if pipe_to_shell { 100 } else { 0 })
         }
-        Source::Git { url } => from_git(&url, sys, &work, Meta { source: url.clone(), sha256: sha, pipe_to_shell: pipe })?,
-    };
-    let _ = source_str;
-    plan.id = id;
-    Ok(plan)
+        Source::Git { url } => from_git(&url, sys, work, Meta { source: url.clone(), sha256: None, pipe_to_shell: false }, progress),
+    }
 }
 
 /// `depth` ≥ 100 means "treat unknown text as a script" (pipe-to-shell input).
@@ -96,12 +108,12 @@ fn from_file(path: &Path, sys: &System, work: &Path, meta: Meta, depth: u32) -> 
     Ok(plan)
 }
 
-fn from_git(url: &str, sys: &System, work: &Path, meta: Meta) -> Result<Plan, String> {
+fn from_git(url: &str, sys: &System, work: &Path, meta: Meta, progress: Progress) -> Result<Plan, String> {
     if !has("git") {
         return Err("`git` is not installed. Install it first (for example: sudo apt install git).".into());
     }
     let dest = work.join("repo");
-    capture("git", &["clone", "--depth", "1", "--", url, &dest.to_string_lossy()])?;
+    capture_until("git", &["clone", "--depth", "1", "--", url, &dest.to_string_lossy()], &|| progress(0, None))?;
     let files: Vec<String> = walkdir::WalkDir::new(&dest)
         .max_depth(2)
         .into_iter()
@@ -137,7 +149,7 @@ mod tests {
         std::fs::write(src.join("install.sh"), "#!/bin/sh\necho hi\n").unwrap();
         let tgz = d.path().join("app-1.tar.gz");
         assert!(Command::new("tar").arg("-czf").arg(&tgz).arg("-C").arg(d.path().join("s")).arg("app-1").status().unwrap().success());
-        let plan = analyze(&tgz.to_string_lossy(), &detect(), false).unwrap();
+        let plan = analyze(&tgz.to_string_lossy(), &detect(), false, &|_, _| true).unwrap();
         assert!(plan.supported, "{:?}", plan.warnings);
         assert_eq!(plan.steps.len(), 2); // extract + run
         assert!(plan.verify.is_some() && plan.sha256.is_some());
@@ -154,12 +166,23 @@ mod tests {
         // GNU tar strips leading ../ unless told otherwise; -P keeps it.
         let ok = Command::new("tar").current_dir(d.path().join("cache").parent().unwrap()).args(["-czPf"]).arg(&tgz).args(["--transform", "s,^f$,../evil,"]).arg("-C").arg(d.path()).arg("f").status().unwrap().success();
         if ok {
-            assert!(analyze(&tgz.to_string_lossy(), &detect(), false).is_err());
+            assert!(analyze(&tgz.to_string_lossy(), &detect(), false, &|_, _| true).is_err());
         }
     }
 
     #[test]
+    fn cancelled_analyze_leaves_no_work_folder() {
+        let _g = crate::util::TEST_ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let d = tempfile::tempdir().unwrap();
+        std::env::set_var("XDG_CACHE_HOME", d.path().join("cache"));
+        let f = d.path().join("install.sh");
+        std::fs::write(&f, "#!/bin/sh\necho hi\n").unwrap();
+        assert_eq!(analyze(&f.to_string_lossy(), &detect(), false, &|_, _| false).unwrap_err(), CANCELLED);
+        assert_eq!(std::fs::read_dir(cache_dir().join("work")).unwrap().count(), 0);
+    }
+
+    #[test]
     fn missing_file_errors() {
-        assert!(analyze("/no/such/file.deb", &detect(), false).is_err());
+        assert!(analyze("/no/such/file.deb", &detect(), false, &|_, _| true).is_err());
     }
 }

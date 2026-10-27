@@ -6,7 +6,7 @@
     "dev:web": "pnpm --filter unpack dev",
     "build": "pnpm --filter unpack build",
     "tauri": "pnpm --filter unpack tauri",
-    "test": "cargo test --manifest-path app/src-tauri/Cargo.toml",
+    "test": "cargo test --no-default-features --manifest-path app/src-tauri/Cargo.toml",
     "lint": "cargo clippy --manifest-path app/src-tauri/Cargo.toml"
   }
 }

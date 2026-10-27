@@ -28,8 +28,13 @@ fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
+/// Bytes done and the total when the server sent one; returning false cancels.
+pub type Progress<'a> = &'a dyn Fn(u64, Option<u64>) -> bool;
+
+pub const CANCELLED: &str = "Cancelled";
+
 /// Download `url` into `dir`. HTTPS only unless `allow_http`.
-pub fn download(url: &str, dir: &Path, allow_http: bool) -> Result<Downloaded, String> {
+pub fn download(url: &str, dir: &Path, allow_http: bool, progress: Progress) -> Result<Downloaded, String> {
     if !allow_http && !url.starts_with("https://") {
         return Err("Refusing plain http:// link. Use the https:// version if the site has one.".into());
     }
@@ -47,6 +52,7 @@ pub fn download(url: &str, dir: &Path, allow_http: bool) -> Result<Downloaded, S
         let asked = crate::input::url_file_name(url);
         if asked == "download" { crate::input::url_file_name(&final_url) } else { asked }
     });
+    let size: Option<u64> = resp.header("Content-Length").and_then(|v| v.parse().ok());
     let path = dir.join(sanitize(&name));
     let mut out = std::fs::File::create(&path).map_err(|e| e.to_string())?;
     let mut reader = resp.into_reader().take(MAX_DOWNLOAD + 1);
@@ -64,6 +70,9 @@ pub fn download(url: &str, dir: &Path, allow_http: bool) -> Result<Downloaded, S
         }
         hasher.update(&buf[..n]);
         out.write_all(&buf[..n]).map_err(|e| e.to_string())?;
+        if !progress(total, size) {
+            return Err(CANCELLED.into());
+        }
     }
     Ok(Downloaded { path, sha256: hex(&hasher.finalize()), final_url })
 }
@@ -98,7 +107,7 @@ mod tests {
     #[test]
     fn rejects_http() {
         let d = tempfile::tempdir().unwrap();
-        assert!(download("http://example.com/a", d.path(), false).is_err());
+        assert!(download("http://example.com/a", d.path(), false, &|_, _| true).is_err());
     }
 
     #[test]

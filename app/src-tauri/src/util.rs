@@ -23,7 +23,7 @@ pub fn home() -> PathBuf {
     std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/tmp"))
 }
 
-fn xdg(var: &str, fallback: &str) -> PathBuf {
+pub fn xdg(var: &str, fallback: &str) -> PathBuf {
     match std::env::var_os(var) {
         Some(v) if !v.is_empty() => PathBuf::from(v),
         _ => home().join(fallback),
@@ -86,6 +86,37 @@ pub fn capture(program: &str, args: &[&str]) -> Result<String, String> {
     } else {
         let err = String::from_utf8_lossy(&out.stderr);
         Err(format!("{program} failed: {}", err.trim()))
+    }
+}
+
+/// `capture` for a long-running program (`git clone`): it is killed when `keep_going` returns false.
+pub fn capture_until(program: &str, args: &[&str], keep_going: &dyn Fn() -> bool) -> Result<(), String> {
+    use std::io::Read;
+    let mut child = command(program)
+        .args(args)
+        .env("LC_ALL", "C")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("{program}: {e}"))?;
+    let mut pipe = child.stderr.take().expect("piped");
+    let err = std::thread::spawn(move || {
+        let mut s = String::new();
+        let _ = pipe.read_to_string(&mut s);
+        s
+    });
+    loop {
+        if let Some(st) = child.try_wait().map_err(|e| e.to_string())? {
+            let err = err.join().unwrap_or_default();
+            return if st.success() { Ok(()) } else { Err(format!("{program} failed: {}", err.trim())) };
+        }
+        if !keep_going() {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(crate::fetch::CANCELLED.into());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
     }
 }
 
