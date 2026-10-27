@@ -54,9 +54,16 @@ Legend: `[x]` done, `[ ]` open, `[~]` partly done. Update this file in the same 
 - [x] Library > Installed with Unpack lists installed apps only; removed ones stay in History
 - [x] App flavor: debug builds use `~/.local/share/unpack-dev` and `~/.cache/unpack-dev`; `pnpm dev` uses `tauri.dev.conf.json` (own identifier, "Unpack (dev)" title), so a dev run never touches the installed app
 - [x] **Bug (fixed):** Electron AppImages (AFFiNE) did nothing from the menu: "The SUID sandbox helper binary was found, but is not configured correctly" because AppArmor restricts user namespaces; the menu entry now adds `--no-sandbox` with a plan warning. Not yet seen working on a clean install **(unverified)**
-- [ ] Allow Actions to create PRs in the repo settings, push, and run the first `!alpha` release; fix what the first real run shows **(unverified)**
+- [x] Allow Actions to create PRs in the repo settings, push, and run the first `!alpha` release (v0.0.1-alpha.1 and alpha.2 published)
 - [ ] Verify the AppImage self-replace and the `.deb` hand-off on a real system **(unverified)**
 - [ ] Check icon in a real GNOME/KDE launcher and the built `.deb` **(unverified)**
+
+## Command line
+- [x] `unpack <command>` in the same binary (`cli.rs`): check, install, list, remove (`--purge`), scan, history, system, version; `--yes`, `--json`, `--root`, `--allow-http`; exit codes 0/1/2/3
+- [x] `gui` cargo feature: `--no-default-features` builds the CLI without Tauri/WebKit; `ops.rs` shares install/uninstall/record between window and CLI
+- [x] Root steps use `sudo` in a terminal, `pkexec` otherwise
+- [x] `scripts/build-cli.sh`: static musl binary (`unpack-cli_<version>_<arch>`), published by the release workflow, installed with `install-linux.sh --cli`
+- [ ] Remove packages the system reports (Library's "Everything on this computer") from the CLI
 
 ## M4 — Format completeness
 Status: all code paths below exist and are unit-tested for planning/parsing. `[~]` = implemented, not yet run end to end on a real distro (see M5).
@@ -73,11 +80,13 @@ Status: all code paths below exist and are unit-tested for planning/parsing. `[~
 - [~] curl / wget command input end to end
 
 ## M5 — Distro coverage
-- [ ] Debian/Ubuntu family tested (VM/container)
-- [ ] Fedora/RHEL family tested
-- [ ] openSUSE tested
-- [ ] Arch/Manjaro tested
-- [ ] Alpine tested
+Containers: `scripts/test-distros.sh` (CLI build, as root plus a normal user without an admin prompt; desktop parts such as menus and the window are not covered). Native package install/remove with leftovers purge, traced script, portable archive, https download, refusals: all pass.
+- [x] Debian 12 and Ubuntu 24.04 tested (containers)
+- [x] Fedora 42 and Rocky Linux 9 tested (containers)
+- [x] openSUSE Tumbleweed tested (container)
+- [x] Arch tested (container)
+- [x] Alpine 3.24 tested (container)
+- [ ] Same flows on a real desktop (polkit window, menu entries, AppImage, Flatpak, Snap) **(unverified)**
 - [ ] Immutable: Silverblue (rpm-ostree), SteamOS, MicroOS plans
 - [ ] NixOS notes (`appimage-run`, `nix-ld`)
 - [ ] Void / Gentoo: universal formats + source plan only
@@ -87,7 +96,7 @@ Status: all code paths below exist and are unit-tested for planning/parsing. `[~
 - [~] `tauri build` → .deb (built OK, 5 MiB); .rpm and AppImage not tried
 - [ ] Flatpak manifest (host-spawn caveat) — evaluate feasibility
 - [ ] AUR PKGBUILD, COPR/PPA notes
-- [ ] CI (GitHub Actions) building on Ubuntu LTS
+- [x] CI (GitHub Actions, `.github/workflows/ci.yml`): core tests and clippy without WebKit, desktop build, static CLI, seven-distro matrix **(unverified: not yet run on GitHub)**
 
 ## M7 — Extra features (ideas)
 - [ ] Update checks: AppImage zsync info, GitHub releases feed, `apt/dnf list --upgradable`
@@ -98,7 +107,7 @@ Status: all code paths below exist and are unit-tested for planning/parsing. `[~
 - [ ] Polkit action + narrow privileged helper instead of generic `pkexec`
 - [ ] Export / import tracked list (move to new machine)
 - [ ] Drop-from-browser integration: `.desktop` MIME handler for `.deb/.rpm/.AppImage…` ("Open with Unpack")
-- [ ] Leftover cleaner after uninstall (`~/.config/<app>`, caches) with preview
+- [x] Leftover cleaner after uninstall (`~/.config/<app>`, caches) with preview (Library offer, `unpack remove --purge`)
 - [ ] i18n
 - [ ] Disk usage per app
 
@@ -106,18 +115,18 @@ Status: all code paths below exist and are unit-tested for planning/parsing. `[~
 - [ ] snap `--dangerous` / `--classic` flow
 - [ ] `.flatpakrepo` add syntax
 - [ ] makeself flags on a real `.run`
-- [ ] Alpine apk v3 container detection
+- [x] Alpine apk v3 container detection (apk-tools 3.0.8 on Alpine 3.24)
 - [ ] FUSE2 package names on Fedora/openSUSE/Alpine
 - [ ] `unsquashfs -cat` for snap.yaml
 - [ ] Tauri capability + CSP config on current Tauri 2.x
 
 ## Known gaps found while building (add here)
-- [ ] No end-to-end test on a real package install (needs VM/container matrix; unit tests cover plan building only)
-- [ ] `analyze` on a huge directory/archive blocks a worker thread with no cancel button
-- [ ] Download has no progress events (install bar is per step only)
-- [ ] Work folders of abandoned plans stay until next startup cleanup
+- [x] No end-to-end test on a real package install (now `scripts/test-distros.sh`, seven distros in Docker)
+- [~] `analyze` cancel: the window gets its answer at once; the worker stops at the next download chunk or git poll, but a huge local archive listing still runs to its end in the background
+- [x] Download has no progress events (`analyze-progress`, MB shown under Check)
+- [~] Work folders: removed after a failed/cancelled analyze and a successful install; a failed install keeps its folder until the next startup cleanup
 - [ ] Trace snapshot walks all of `~/.local` (slow if it holds a lot of data)
-- [ ] Uninstall of leftover config/cache dirs
+- [x] Uninstall of leftover config/cache dirs (matched by app name and flatpak id only)
 - [ ] Bare `.orig.tar.gz` / `.debian.tar.xz` handling
 - [ ] System-wide uninstall list shows libraries on dnf/zypper (no "user-installed" filter for zypper)
 - [x] **Bug (fixed):** the AppImage passes its own `LD_LIBRARY_PATH` (bundled `liblzma`, `libzstd`, `libbz2`, …) to every command it runs. `dpkg-deb` then fails (`version 'XZ_5.4' not found`), `capture()` errors are swallowed by `unwrap_or_default()`, and a `.deb` is tracked under its file name instead of its package name with no version. Found installing `Ghost-Downloader-v4.4.5-Linux-x86_64.deb`: stored ident `Ghost-Downloader-v4.4.5-Linux-x86_64` instead of `ghost-downloader`, so Library > Remove fails (`apt` exit 100). Fix: drop `LD_LIBRARY_PATH` (and `APPDIR`-derived variables) in `util::capture` and the runner; do not default silently when `dpkg-deb`/`rpm` fail, refuse or warn instead

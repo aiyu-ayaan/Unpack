@@ -31,9 +31,11 @@ Architecture: [`development/docs/04-architecture.md`](development/docs/04-archit
 Security model: [`development/docs/05-security.md`](development/docs/05-security.md).
 Progress: [`development/TODO.md`](development/TODO.md).
 
-> **Early software.** The planning and parsing paths have unit tests (39 pass). Installs have not yet been run
-> end to end on a real Debian, Fedora, openSUSE, Arch or Alpine machine; see M5 in the TODO. Facts not yet
-> checked on a real system are marked **(unverified)** in the docs.
+> **Early software.** The core has unit tests (54 pass), and the command line installs, tracks and removes
+> real packages on Debian, Ubuntu, Fedora, Rocky Linux, openSUSE, Arch and Alpine in Docker
+> (`scripts/test-distros.sh`). The desktop parts (password window, menu entries, AppImage, Flatpak, Snap) have
+> not been run on each of those desktops yet; see M5 in the TODO. Facts not yet checked on a real system are
+> marked **(unverified)** in the docs.
 
 ## Walkthrough
 
@@ -239,7 +241,7 @@ whether to trust the source.
 
 ## Known gaps
 
-- Not yet run end to end on real distros (Debian/Ubuntu, Fedora, openSUSE, Arch, Alpine, immutable systems)
+- The desktop parts are not yet run on each distro's desktop, and immutable systems are not tested
 - Files written outside `~/.local`, `/opt` and `/usr/local` by a script are not traced, so its removal may be `Manual`
 - Leftover folders are found by the app's name only (`~/.config/<name>` and the like); folders an app names differently are not offered
 
