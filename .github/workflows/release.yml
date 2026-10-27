@@ -240,8 +240,9 @@ jobs:
 
   # musl (Alpine) cannot run an AppImage, so it gets a binary built in an Alpine container.
   # scripts/install-linux.sh downloads it, or builds from source when it is missing.
+  # The same container builds the static command line (unpack-cli_<version>_<arch>, `install-linux.sh --cli`).
   build-musl:
-    name: Alpine bundle (${{ matrix.arch }})
+    name: Alpine bundle and CLI (${{ matrix.arch }})
     needs: plan
     if: contains(fromJSON('["release","patch"]'), needs.plan.outputs.mode)
     strategy:
@@ -256,15 +257,19 @@ jobs:
         run: |
           mkdir -p dist-musl
           docker run --rm -v "$PWD:/src" -w /src alpine:3.24 sh -c \
-            'apk add --no-cache $(sh scripts/build-musl.sh --deps) && sh scripts/build-musl.sh /src/dist-musl'
+            'apk add --no-cache $(sh scripts/build-musl.sh --deps) && sh scripts/build-musl.sh /src/dist-musl && sh scripts/build-cli.sh /src/dist-musl'
       - name: Check the file is named for this version
         env:
           VERSION: ${{ needs.plan.outputs.version }}
-        run: ls "dist-musl/Unpack_${VERSION}_${{ matrix.arch }}-musl.tar.gz" || { echo "::error::No Alpine bundle named for $VERSION"; exit 1; }
+        run: |
+          ls "dist-musl/Unpack_${VERSION}_${{ matrix.arch }}-musl.tar.gz" || { echo "::error::No Alpine bundle named for $VERSION"; exit 1; }
+          ls "dist-musl/unpack-cli_${VERSION}_${{ matrix.arch }}" || { echo "::error::No CLI named for $VERSION"; exit 1; }
       - uses: actions/upload-artifact@v4
         with:
           name: bundles-musl-${{ matrix.arch }}
-          path: dist-musl/*-musl.tar.gz
+          path: |
+            dist-musl/*-musl.tar.gz
+            dist-musl/unpack-cli_*
           if-no-files-found: error
           retention-days: 1
 

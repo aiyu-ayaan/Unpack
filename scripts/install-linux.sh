@@ -6,6 +6,7 @@
 #   ... | sh -s -- --version 0.0.1    a specific release
 #   ... | sh -s -- --uninstall        remove it (history and settings stay in ~/.local/share/unpack)
 #   ... | sh -s -- --from-source      musl only: build it here instead of downloading the build
+#   ... | sh -s -- --cli              the command line only (one static binary, no window, any distro)
 #
 # The AppImage goes to ~/.local/share/unpack, a place this user owns, because the app updates
 # itself by replacing that file (app/src-tauri/src/updates.rs). It also gets a menu entry with
@@ -25,6 +26,8 @@ DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
 APP="$DATA_HOME/unpack/Unpack.AppImage"
 # musl: a plain binary instead of the AppImage.
 MUSL_APP="$DATA_HOME/unpack/unpack"
+# --cli: the static command-line build, no desktop parts.
+CLI_APP="$DATA_HOME/unpack/unpack-cli"
 REPO="https://github.com/aiyu-ayaan/Unpack"
 BIN="$HOME/.local/bin/unpack"
 # StartupWMClass matches the window class Tauri gives the app, which ties the window to this entry.
@@ -38,6 +41,7 @@ VERSION=""
 FROM_FILE=""
 UNINSTALL=0
 FROM_SOURCE=0
+CLI=0
 
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
@@ -48,7 +52,8 @@ while [ $# -gt 0 ]; do
     --from-file) FROM_FILE="${2:?--from-file needs a path}"; shift 2 ;;
     --uninstall) UNINSTALL=1; shift ;;
     --from-source) FROM_SOURCE=1; shift ;;
-    -h | --help) sed -n '2,8p' "$0" 2>/dev/null || true; echo "  --from-file PATH   install a local AppImage"; exit 0 ;;
+    --cli) CLI=1; shift ;;
+    -h | --help) sed -n '2,9p' "$0" 2>/dev/null || true; echo "  --from-file PATH   install a local AppImage"; exit 0 ;;
     *) die "unknown option: $1" ;;
   esac
 done
@@ -61,9 +66,9 @@ refresh_menus() {
 }
 
 if [ "$UNINSTALL" -eq 1 ]; then
-  rm -f "$APP" "$APP.part" "$MUSL_APP" "$MUSL_APP.part" "$DESKTOP_FILE" "$ICON_FILE"
+  rm -f "$APP" "$APP.part" "$MUSL_APP" "$MUSL_APP.part" "$CLI_APP" "$CLI_APP.part" "$DESKTOP_FILE" "$ICON_FILE"
   # Only our own link or wrapper.
-  if { [ -L "$BIN" ] && { [ "$(readlink "$BIN")" = "$APP" ] || [ "$(readlink "$BIN")" = "$MUSL_APP" ]; }; } || grep -qs "$WRAPPER_MARK" "$BIN" 2>/dev/null; then rm -f "$BIN"; fi
+  if { [ -L "$BIN" ] && { [ "$(readlink "$BIN")" = "$APP" ] || [ "$(readlink "$BIN")" = "$MUSL_APP" ] || [ "$(readlink "$BIN")" = "$CLI_APP" ]; }; } || grep -qs "$WRAPPER_MARK" "$BIN" 2>/dev/null; then rm -f "$BIN"; fi
   refresh_menus
   echo "Unpack is removed. Its history and settings are kept in $DATA_HOME/unpack."
   exit 0
@@ -76,9 +81,16 @@ case "$(uname -m)" in
   *) die "Unpack for Linux is built for x86_64 and aarch64; this machine is $(uname -m)." ;;
 esac
 
-# The AppImage is built against glibc; musl systems get a native build instead.
+# Release files are Unpack_<version>_<suffix>; the command line is unpack-cli_<version>_<uname -m>.
+PREFIX=Unpack
+# The AppImage is built against glibc; musl systems get a native build instead. The CLI is static: any libc.
 MUSL=""
-if ldd --version 2>&1 | grep -qi musl; then
+if [ "$CLI" -eq 1 ]; then
+  [ "$FROM_SOURCE" -eq 0 ] || die "--from-source is not needed with --cli; that build runs everywhere."
+  PREFIX=unpack-cli
+  APP="$CLI_APP"
+  ASSET="_$(uname -m)"
+elif ldd --version 2>&1 | grep -qi musl; then
   MUSL=1
   APP="$MUSL_APP"
   ASSET="_$(uname -m)-musl\\.tar\\.gz"
@@ -138,7 +150,7 @@ else
   # Every build URL as "<sort key> <version> <url>"; the newest is last after a sort. The key
   # orders by number, then alpha < beta < stable, then the pre-release number (plain `sort -V`
   # puts 0.0.1 before 0.0.1-alpha.1). A channel takes its own builds and every steadier one.
-  find_urls() { printf '%s\n' "$releases" | grep -oE "https://[^\"]*/Unpack_[0-9][^\"/]*$1" | sort -u || true; }
+  find_urls() { printf '%s\n' "$releases" | grep -oE "https://[^\"]*/${PREFIX}_[0-9][^\"/]*$1" | sort -u || true; }
   urls="$(find_urls "$ASSET")"
   SOURCE=""
   if [ -n "$MUSL" ] && { [ "$FROM_SOURCE" -eq 1 ] || [ -z "$urls" ]; }; then
@@ -148,8 +160,8 @@ else
     urls="$(find_urls '_[a-z0-9]+\.AppImage')"
   fi
   newest_on() {
-    printf '%s\n' "$urls" | awk -v channel="$1" -v want="$VERSION" '{
-      v = $0; sub(/.*\/Unpack_/, "", v); sub(/_.*/, "", v)
+    printf '%s\n' "$urls" | awk -v channel="$1" -v want="$VERSION" -v prefix="$PREFIX" '{
+      v = $0; sub(".*/" prefix "_", "", v); sub(/_.*/, "", v)
       if (v !~ /^[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta)\.[0-9]+)?$/) next
       split(v, p, /[.-]/)
       stage = 2; n = 99999
@@ -205,6 +217,19 @@ chmod 755 "$APP.part"
 mv -f "$APP.part" "$APP"
 trap - EXIT INT TERM
 [ -z "${work:-}" ] || rm -rf "$work"
+
+if [ "$CLI" -eq 1 ]; then
+  mkdir -p "$(dirname "$BIN")"
+  if [ ! -e "$BIN" ] || { [ -L "$BIN" ] && [ "$(readlink "$BIN")" = "$CLI_APP" ]; }; then
+    rm -f "$BIN" && ln -s "$CLI_APP" "$BIN"
+    echo "Unpack $label (command line) is installed. Run 'unpack --help'."
+  else
+    # The desktop app's own 'unpack' command already takes the same commands.
+    echo "Unpack $label (command line) is installed at $CLI_APP. $BIN already exists (the desktop app takes the same commands), so it was left as it is."
+  fi
+  case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) echo "note: add $HOME/.local/bin to your PATH to use the 'unpack' command." >&2 ;; esac
+  exit 0
+fi
 
 # The musl build links against the system's WebKitGTK and GTK.
 [ -z "$MUSL" ] || need_apk webkit2gtk-4.1 gtk+3.0
