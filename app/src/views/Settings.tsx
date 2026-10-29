@@ -14,6 +14,13 @@ const CHANNELS: { id: Channel; label: string; hint: string }[] = [
 const CREDITS: [string, string][] = [
   ["Tauri", "MIT / Apache-2.0"], ["React", "MIT"], ["Tailwind CSS", "MIT"], ["Vite", "MIT"], ["Lucide", "ISC"],
   ["Rust", "MIT / Apache-2.0"], ["rusqlite and SQLite", "MIT / Public domain"], ["ureq", "MIT / Apache-2.0"],
+  ["tauri-plugin-single-instance", "MIT / Apache-2.0"], ["serde, sha2, shlex, tempfile", "MIT / Apache-2.0"], ["walkdir", "Unlicense / MIT"],
+];
+
+/** Services and tools Unpack asks at run time; none of them is bundled. */
+const THANKS: [string, string][] = [
+  ["Flathub", "App catalog, descriptions and screenshots"], ["Snap Store", "Snap search and sections"], ["GitHub", "Releases for updates"],
+  ["bubblewrap", "Sandbox preview (LGPL-2.0+)"], ["distrobox", "Containers for other distros (GPL-3.0)"], ["GnuPG", "Signature checks (GPL-3.0+)"],
 ];
 
 const Row = ({ k, children }: { k: string; children: ReactNode }) => (
@@ -213,6 +220,10 @@ export default function Settings({ u, onReview }: { u: Update; onReview: (i: Inc
 
       <Card title="Built with">
         {CREDITS.map(([n, l]) => <Row key={n} k={n}>{l}</Row>)}
+      </Card>
+
+      <Card title="With thanks to">
+        {THANKS.map(([n, l]) => <Row key={n} k={n}>{l}</Row>)}
       </Card>
     </div>
   );

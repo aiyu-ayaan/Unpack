@@ -263,6 +263,12 @@ whether to trust the source.
 
 The full list is in [`development/TODO.md`](development/TODO.md).
 
+## Acknowledgements
+
+Built with [Tauri](https://tauri.app) (and its single-instance plugin), [React](https://react.dev), [Tailwind CSS](https://tailwindcss.com), [Vite](https://vite.dev), [Lucide](https://lucide.dev) icons, [Rust](https://www.rust-lang.org), [SQLite](https://sqlite.org) through [rusqlite](https://github.com/rusqlite/rusqlite), and the Rust crates `ureq`, `serde`, `sha2`, `shlex`, `tempfile`, `thiserror` and `walkdir`.
+
+Unpack asks these at run time and bundles none of them: [Flathub](https://flathub.org) (catalog, descriptions, screenshots), the [Snap Store](https://snapcraft.io), [GitHub](https://github.com) releases, and, when present on your system, [bubblewrap](https://github.com/containers/bubblewrap) (sandbox preview), [distrobox](https://github.com/89luca89/distrobox) (containers for other distros) and [GnuPG](https://gnupg.org) (signature checks). Thanks also to [bauh](https://github.com/vinifmor/bauh), [Gear Lever](https://github.com/mijorus/gearlever), [AppImageLauncher](https://github.com/TheAssassin/AppImageLauncher), [AM](https://github.com/ivan-hc/AM) and [PackageKit](https://www.freedesktop.org/software/PackageKit/), whose approaches informed the research in [`development/docs/01-research-landscape.md`](development/docs/01-research-landscape.md).
+
 ## License
 
 [MIT](LICENSE) © 2026 aiyu-ayaan.
