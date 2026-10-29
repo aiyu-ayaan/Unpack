@@ -15,6 +15,7 @@ pub mod sniff;
 pub mod store;
 pub mod system;
 pub mod trace;
+pub mod transfer;
 pub mod updates;
 pub mod upgrades;
 pub mod util;

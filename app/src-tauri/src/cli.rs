@@ -1,7 +1,7 @@
 //! `unpack <command>`: the window's analyze → plan → install flow in a terminal, on the same database.
 use crate::plan::{Plan, Uninstall};
 use crate::store::{App, Store};
-use crate::{analyze, catalog, fix, library, ops, plan as plans, runner, system, updates, upgrades, util};
+use crate::{analyze, catalog, fix, library, ops, plan as plans, runner, system, transfer, updates, upgrades, util};
 use std::io::{IsTerminal, Write};
 use std::sync::Mutex;
 
@@ -21,6 +21,8 @@ Commands:
   upgrade [name...]    Update those packages (all of them with no names)
   remove <id|name>     Uninstall a tracked app (--purge: also its settings and cache folders)
   fix <id|name>        Find what keeps an app from starting and repair it
+  export [file]        Save the list of installed apps (default ~/unpack-apps.json) to take to another computer
+  import <file>        Install the apps of an exported list again, asking for each
   scan                 Every package the system's package managers report
   history [id|name]    What Unpack did, newest first
   system               What Unpack detected about this computer
@@ -172,6 +174,12 @@ fn run(args: &[String]) -> Result<i32, String> {
             }
         }
         "upgrade" => return upgrade(&o),
+        "export" => {
+            let path = o.args.first().map(std::path::PathBuf::from).unwrap_or_else(transfer::default_path);
+            let n = transfer::write(&store()?.into_inner().map_err(|e| e.to_string())?.list()?, &path)?;
+            println!("Saved {n} apps to {}.", path.display());
+        }
+        "import" => return import(&o),
         "fix" => {
             let key = o.args.first().ok_or("fix needs an app id or name. See `unpack list`.")?;
             let app = find(&store()?.into_inner().map_err(|e| e.to_string())?, key, false)?;
@@ -356,6 +364,42 @@ fn upgrade(o: &Opts) -> Result<i32, String> {
         let mut plan = check(&url, o)?;
         plan.track = plans::Track::Replace(app.id);
         code = code.max(run_plan(plan, o)?);
+    }
+    Ok(code)
+}
+
+fn import(o: &Opts) -> Result<i32, String> {
+    let path = o.args.first().ok_or("import needs the file `unpack export` wrote.")?;
+    let sys = system::detect();
+    let mut code = 0;
+    for i in transfer::read(std::path::Path::new(path), &sys)? {
+        let plan = match &i.way {
+            transfer::Way::Store { source, id } => {
+                let mut p = plans::plan_repo(source, id, &sys);
+                p.id = analyze::new_id();
+                show(&p);
+                p
+            }
+            transfer::Way::Input { input } => match check(input, o) {
+                Ok(p) => p,
+                Err(e) => {
+                    eprintln!("{}: {e}", i.item.name);
+                    code = 1;
+                    continue;
+                }
+            },
+            transfer::Way::None { why } => {
+                println!("{}: skipped. {why}", i.item.name);
+                continue;
+            }
+        };
+        match run_plan(plan, o) {
+            Ok(c) => code = code.max(c),
+            Err(e) => {
+                eprintln!("{}: {e}", i.item.name);
+                code = 1;
+            }
+        }
     }
     Ok(code)
 }

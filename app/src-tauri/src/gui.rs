@@ -2,7 +2,7 @@
 use crate::plan::{Plan, Uninstall};
 use crate::store::{App, Event, Store};
 use crate::system::{self, System};
-use crate::{analyze, catalog, fetch, fix, library, mime, ops, plan, runner, updates, upgrades, util};
+use crate::{analyze, catalog, fetch, fix, library, mime, ops, plan, runner, transfer, updates, upgrades, util};
 use ops::RunResult;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -158,6 +158,26 @@ fn file_handler() -> bool {
 #[tauri::command]
 async fn set_file_handler(on: bool) -> Result<(), String> {
     blocking(move || if on { mime::enable() } else { mime::disable() }).await?
+}
+
+/// Save the installed apps to `~/unpack-apps.json`; returns where.
+#[tauri::command]
+fn export_apps(state: Shared<'_>) -> Result<String, String> {
+    let apps = state.store.lock().map_err(|e| e.to_string())?.list()?;
+    let path = transfer::default_path();
+    transfer::write(&apps, &path)?;
+    Ok(path.display().to_string())
+}
+
+/// Read an exported list and say how each app can come back here; installing goes through Store or Install.
+#[tauri::command]
+async fn import_apps(path: String) -> Result<Vec<transfer::Imported>, String> {
+    blocking(move || {
+        let path = path.trim();
+        let p = path.strip_prefix("~/").map(|r| util::home().join(r)).unwrap_or_else(|| path.into());
+        transfer::read(&p, &system::detect())
+    })
+    .await?
 }
 
 #[tauri::command]
@@ -330,7 +350,7 @@ pub fn run(open: Option<String>) {
             std::thread::spawn(analyze::clean_old_work);
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![detect_system, analyze, cancel_analyze, store_popular, store_search, store_plan, list_upgrades, upgrade_plan, update_app_plan, fix_plan, take_opened, file_handler, set_file_handler, execute, list_apps, history, scan_system, uninstall_app, leftovers, remove_leftovers, uninstall_system, update_info, update_check, update_install, update_set_channel, update_skip, open_link])
+        .invoke_handler(tauri::generate_handler![detect_system, analyze, cancel_analyze, store_popular, store_search, store_plan, list_upgrades, upgrade_plan, update_app_plan, fix_plan, take_opened, file_handler, set_file_handler, export_apps, import_apps, execute, list_apps, history, scan_system, uninstall_app, leftovers, remove_leftovers, uninstall_system, update_info, update_check, update_install, update_set_channel, update_skip, open_link])
         .run(tauri::generate_context!())
         .expect("error while running Unpack");
 }

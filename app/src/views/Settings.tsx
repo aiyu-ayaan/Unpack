@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { ExternalLink, Code2, UserRound, Globe, Bug, RefreshCw, XCircle, CheckCircle2, Download } from "lucide-react";
-import { api, errText, type Channel, type Link } from "../api";
+import { api, errText, type Channel, type Imported, type Link } from "../api";
+import type { Incoming } from "../App";
 import { plainNotes, type Update } from "../update";
 import { Banner, PageHeader, Progress } from "../components/ui";
 
@@ -54,7 +55,41 @@ function FileHandler() {
   );
 }
 
-export default function Settings({ u }: { u: Update }) {
+function Transfer({ onReview }: { onReview: (i: Incoming) => void }) {
+  const [saved, setSaved] = useState<string | null>(null);
+  const [path, setPath] = useState("~/unpack-apps.json");
+  const [list, setList] = useState<Imported[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const run = async (f: () => Promise<void>) => { setErr(null); try { await f(); } catch (e) { setErr(errText(e)); } };
+  const bring = (i: Imported) => run(async () => {
+    if (i.way.type === "store") onReview({ plan: await api.storePlan(i.way.source, i.way.id) });
+    else if (i.way.type === "input") onReview({ input: i.way.input });
+  });
+  return (
+    <>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
+        <div><p className="text-strong">Export your apps</p><p className="text-xs text-dim">Saves the list of apps installed with Unpack, to set up another computer.</p></div>
+        <button className="btn" onClick={() => void run(async () => setSaved(await api.exportApps()))}>Export</button>
+      </div>
+      {saved && <p className="border-b border-line px-4 py-2 text-xs text-dim">Saved to <span className="font-mono">{saved}</span></p>}
+      <form className="flex flex-wrap items-center gap-2 px-4 py-3" onSubmit={(e) => { e.preventDefault(); void run(async () => setList(await api.importApps(path))); }}>
+        <label className="min-w-0 flex-1"><span className="sr-only">Exported list to import</span>
+          <input className="input" value={path} onChange={(e) => setPath(e.target.value)} spellCheck={false} /></label>
+        <button className="btn">Import</button>
+      </form>
+      {err && <div className="border-t border-line p-4"><Banner tone="bad" icon={<XCircle className="h-4 w-4" />}>{err}</Banner></div>}
+      {list && (list.length === 0 ? <p className="border-t border-line px-4 py-3 text-dim">That list is empty.</p> : list.map((i, n) => (
+        <div key={n} className="flex items-center gap-3 border-t border-line px-4 py-2">
+          <div className="min-w-0 flex-1"><div className="truncate text-strong">{i.item.name}</div>
+            <div className="truncate text-xs text-dim">{i.way.type === "store" ? `From ${i.way.source}` : i.way.type === "input" ? i.way.input : i.way.why}</div></div>
+          {i.way.type !== "none" && <button className="btn" onClick={() => void bring(i)}>Install</button>}
+        </div>
+      )))}
+    </>
+  );
+}
+
+export default function Settings({ u, onReview }: { u: Update; onReview: (i: Incoming) => void }) {
   const { info, offer } = u;
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-5">
@@ -95,6 +130,8 @@ export default function Settings({ u }: { u: Update }) {
       </Card>
 
       <Card title="Files"><FileHandler /></Card>
+
+      <Card title="Move to another computer"><Transfer onReview={onReview} /></Card>
 
       <Card title="About Unpack">
         <Row k="Version">{info?.version ?? "…"}</Row>

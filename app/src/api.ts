@@ -32,6 +32,8 @@ export type Link = "repo" | "issues" | "developer" | "site";
 export type LogLine = { plan_id: string; stream: string; line: string };
 export type Fetched = { done: number; total: number | null };
 export type Upgrade = { manager: string; name: string; current: string; latest: string; user: boolean; app_id: number | null };
+export type Way = { type: "store"; source: string; id: string } | { type: "input"; input: string } | { type: "none"; why: string };
+export type Imported = { item: { name: string; kind: string; source: string | null }; way: Way };
 export type Entry = { source: string; id: string; name: string; summary: string; icon: string | null };
 
 export const api = {
@@ -51,6 +53,9 @@ export const api = {
   takeOpened: () => invoke<string | null>("take_opened"),
   fileHandler: () => invoke<boolean>("file_handler"),
   setFileHandler: (on: boolean) => invoke<void>("set_file_handler", { on }),
+  /** Saves the installed apps to ~/unpack-apps.json and returns that path. */
+  exportApps: () => invoke<string>("export_apps"),
+  importApps: (path: string) => invoke<Imported[]>("import_apps", { path }),
   cancelAnalyze: () => invoke<void>("cancel_analyze"),
   onAnalyzeProgress: (fn: (p: Fetched) => void) => listen<Fetched>("analyze-progress", (e) => fn(e.payload)),
   execute: (planId: string, asRoot: boolean) => invoke<RunResult>("execute", { planId, asRoot }),

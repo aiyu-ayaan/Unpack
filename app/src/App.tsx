@@ -95,7 +95,7 @@ export default function App() {
               {view === "library" && <Library version={version} onTask={setTask} onReview={review} />}
               {view === "system" && <System s={sys} err={sysErr} />}
               {view === "history" && <History version={version} />}
-              {view === "settings" && <Settings u={update} />}
+              {view === "settings" && <Settings u={update} onReview={review} />}
             </div>
           </main>
         </div>
