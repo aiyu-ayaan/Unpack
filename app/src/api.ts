@@ -37,6 +37,10 @@ export type Way = { type: "store"; source: string; id: string } | { type: "input
 export type Imported = { item: { name: string; kind: string; source: string | null }; way: Way };
 export type SandboxReport = { code: number | null; timed_out: boolean; files: string[]; output: string[] };
 export type Entry = { source: string; id: string; name: string; summary: string; icon: string | null };
+export type Detail = {
+  description: string; screenshots: string[]; permissions: string[]; developer: string | null; license: string | null;
+  download_size: number | null; installed_size: number | null;
+};
 
 export const api = {
   system: () => invoke<SystemInfo>("detect_system"),
@@ -44,6 +48,10 @@ export const api = {
   analyze: (input: string, allowHttp: boolean, asPackage = false) => invoke<Plan>("analyze", { input, allowHttp, asPackage }),
   storePopular: () => invoke<Entry[]>("store_popular"),
   storeSearch: (query: string) => invoke<Entry[]>("store_search", { query }),
+  /** Flathub category name (`Game`, `Graphics`…), with the matching Snap Store section. */
+  storeCategory: (category: string) => invoke<Entry[]>("store_category", { category }),
+  /** Description, screenshots and permissions of one Store entry. */
+  storeDetail: (source: string, id: string) => invoke<Detail>("store_detail", { source, id }),
   /** A reviewable plan for a Store entry; the backend checks the id and keeps the plan. */
   storePlan: (source: string, id: string) => invoke<Plan>("store_plan", { source, id }),
   upgrades: () => invoke<Upgrade[]>("list_upgrades"),

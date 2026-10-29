@@ -102,6 +102,9 @@ Containers: `scripts/test-distros.sh` (CLI build, as root plus a normal user wit
 
 ## Store and updates
 - [x] Store view: Flathub popular apps with icons; search across Flathub, the Snap Store and the native repositories; Install opens the reviewed plan (`catalog.rs`, `plan::plan_repo`); `unpack search` / `unpack get`
+- [x] Store app page: description, screenshots, permissions in plain words, developer, license, size (`unpack info`)
+- [x] Store categories (Flathub categories plus the matching Snap Store section)
+- [x] Popular grid: Flathub popular, Snap Store featured, well-known apps from the native repositories
 
 ## M7 — Extra features (ideas)
 - [x] Update checks: every manager's upgradable list, Flatpak, snap, GitHub releases of tracked apps, AppImage `gh-releases-zsync` info (Updates view, `unpack updates` / `unpack upgrade`)

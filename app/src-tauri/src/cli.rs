@@ -15,6 +15,7 @@ Commands:
   check <input>        Show the plan for a file, link, git address or curl/wget command; nothing runs
   install <input>      Show the plan, ask, install, and track it
   search <words>       Find apps on Flathub, the Snap Store and your distro's repositories
+  info <source> <id>   Description, permissions and size of one search result
   get <source> <id>    Install one search result (source: flathub, snap, apt, dnf, zypper, pacman, apk, xbps, emerge)
   list                 Apps installed with Unpack (--all: removed ones too)
   updates              What can be updated: system packages, Flatpaks, snaps, and apps from GitHub releases
@@ -158,6 +159,30 @@ fn run(args: &[String]) -> Result<i32, String> {
                     println!("{:<8} {:<40} {}", e.source, e.id, e.summary);
                 }
                 println!("Install one with `unpack get <source> <id>`.");
+            }
+        }
+        "info" => {
+            let [source, id] = o.args.as_slice() else { return Err("info needs a source and an id, as `unpack search` lists them.".into()) };
+            let d = catalog::detail(source, id, &system::detect())?;
+            if o.json {
+                json(&d)?;
+            } else {
+                println!("{}", if d.description.is_empty() { "No description." } else { &d.description });
+                if let Some(dev) = &d.developer {
+                    println!("\nBy       {dev}");
+                }
+                if let Some(l) = &d.license {
+                    println!("License  {l}");
+                }
+                if let Some(b) = d.installed_size {
+                    println!("Size     {:.1} MB installed", b as f64 / 1_048_576.0);
+                }
+                if !d.permissions.is_empty() {
+                    println!("\nPermissions:");
+                    for p in &d.permissions {
+                        println!("  - {p}");
+                    }
+                }
             }
         }
         "get" => {

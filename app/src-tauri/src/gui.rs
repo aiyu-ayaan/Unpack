@@ -88,7 +88,17 @@ fn keep(st: &AppState, mut plan: Plan) -> Result<Plan, String> {
 
 #[tauri::command]
 async fn store_popular() -> Result<Vec<catalog::Entry>, String> {
-    blocking(catalog::popular).await?
+    blocking(|| catalog::popular(&system::detect())).await?
+}
+
+#[tauri::command]
+async fn store_category(category: String) -> Result<Vec<catalog::Entry>, String> {
+    blocking(move || catalog::category(&category)).await?
+}
+
+#[tauri::command]
+async fn store_detail(source: String, id: String) -> Result<catalog::Detail, String> {
+    blocking(move || catalog::detail(&source, &id, &system::detect())).await?
 }
 
 #[tauri::command]
@@ -367,7 +377,7 @@ pub fn run(open: Option<String>) {
             std::thread::spawn(analyze::clean_old_work);
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![detect_system, analyze, cancel_analyze, store_popular, store_search, store_plan, list_upgrades, upgrade_plan, update_app_plan, fix_plan, take_opened, file_handler, set_file_handler, export_apps, import_apps, sandbox_preview, execute, list_apps, history, scan_system, uninstall_app, leftovers, remove_leftovers, uninstall_system, update_info, update_check, update_install, update_set_channel, update_skip, open_link])
+        .invoke_handler(tauri::generate_handler![detect_system, analyze, cancel_analyze, store_popular, store_category, store_detail, store_search, store_plan, list_upgrades, upgrade_plan, update_app_plan, fix_plan, take_opened, file_handler, set_file_handler, export_apps, import_apps, sandbox_preview, execute, list_apps, history, scan_system, uninstall_app, leftovers, remove_leftovers, uninstall_system, update_info, update_check, update_install, update_set_channel, update_skip, open_link])
         .run(tauri::generate_context!())
         .expect("error while running Unpack");
 }

@@ -54,10 +54,253 @@ fn flathub_entries(body: &str) -> Result<Vec<Entry>, String> {
         .collect())
 }
 
-/// Flathub's popular apps, for the Store's front page.
-pub fn popular() -> Result<Vec<Entry>, String> {
-    let body = agent().get(&format!("{FLATHUB}/collection/popular?page=1&per_page=60")).call().map_err(|e| format!("Could not reach Flathub: {e}"))?;
-    flathub_entries(&body.into_string().map_err(|e| e.to_string())?)
+fn flathub_get(path: &str) -> Result<String, String> {
+    agent().get(&format!("{FLATHUB}/{path}")).call().map_err(|e| format!("Could not reach Flathub: {e}"))?.into_string().map_err(|e| e.to_string())
+}
+
+/// Desktop apps most people look for, offered from the native repositories on the front page when they are there.
+const POPULAR_NATIVE: [&str; 12] = ["firefox", "vlc", "gimp", "libreoffice", "thunderbird", "inkscape", "krita", "obs-studio", "audacity", "blender", "keepassxc", "transmission-gtk"];
+
+/// Flathub entries plus `rest`; an error only when there is nothing at all.
+fn with_flathub(flat: Result<Vec<Entry>, String>, rest: Vec<Entry>) -> Result<Vec<Entry>, String> {
+    match flat {
+        Ok(mut v) => {
+            v.extend(rest);
+            Ok(v)
+        }
+        Err(e) if rest.is_empty() => Err(e),
+        Err(_) => Ok(rest),
+    }
+}
+
+/// The Store's front page: Flathub's popular apps, the Snap Store's featured ones, and well-known apps from the
+/// native repositories.
+pub fn popular(sys: &System) -> Result<Vec<Entry>, String> {
+    let (flat, rest) = std::thread::scope(|s| {
+        let flat = s.spawn(|| flathub_entries(&flathub_get("collection/popular?page=1&per_page=60")?));
+        let snaps = s.spawn(|| if has("snap") { capture("snap", &["find", "--section=featured"]).map(|o| parse_snap(&o)).unwrap_or_default() } else { vec![] });
+        let native: Vec<_> = sys.native.map(|n| POPULAR_NATIVE.map(|name| s.spawn(move || native_search(n, name).into_iter().find(|e| e.id == name))).into_iter().collect()).unwrap_or_default();
+        let mut rest: Vec<Entry> = snaps.join().unwrap_or_default().into_iter().take(NATIVE_MAX).collect();
+        rest.extend(native.into_iter().filter_map(|h| h.join().ok().flatten()));
+        (flat.join().unwrap_or_else(|_| Err("Flathub stopped".into())), rest)
+    });
+    with_flathub(flat, rest)
+}
+
+/// Store categories: Flathub's name, the label, and the Snap Store section that matches, if any.
+pub const CATEGORIES: [(&str, &str, Option<&str>); 10] = [
+    ("AudioVideo", "Audio & Video", Some("photo-and-video")),
+    ("Development", "Development", Some("development")),
+    ("Education", "Education", Some("education")),
+    ("Game", "Games", Some("games")),
+    ("Graphics", "Graphics", Some("art-and-design")),
+    ("Network", "Internet", Some("social")),
+    ("Office", "Office", Some("productivity")),
+    ("Science", "Science", Some("science")),
+    ("System", "System", None),
+    ("Utility", "Utilities", Some("utilities")),
+];
+
+/// One category's apps from Flathub and the Snap Store.
+pub fn category(name: &str) -> Result<Vec<Entry>, String> {
+    let (_, _, section) = CATEGORIES.iter().find(|c| c.0 == name).ok_or("Unknown category")?;
+    let (flat, rest) = std::thread::scope(|s| {
+        let flat = s.spawn(|| flathub_entries(&flathub_get(&format!("collection/category/{name}?page=1&per_page=60"))?));
+        let rest = match section {
+            Some(sec) if has("snap") => capture("snap", &["find", &format!("--section={sec}")]).map(|o| parse_snap(&o)).unwrap_or_default().into_iter().take(NATIVE_MAX).collect(),
+            _ => vec![],
+        };
+        (flat.join().unwrap_or_else(|_| Err("Flathub stopped".into())), rest)
+    });
+    with_flathub(flat, rest)
+}
+
+/// What the Store shows about one app before it is installed.
+#[derive(Serialize, Clone, Debug, Default, PartialEq)]
+pub struct Detail {
+    pub description: String,
+    /// `https://dl.flathub.org/` images.
+    pub screenshots: Vec<String>,
+    /// What the app may reach, in plain words. Empty when the source does not say.
+    pub permissions: Vec<String>,
+    pub developer: Option<String>,
+    pub license: Option<String>,
+    pub download_size: Option<u64>,
+    pub installed_size: Option<u64>,
+}
+
+#[derive(Deserialize, Default)]
+struct Appstream {
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(default)]
+    screenshots: Vec<Shot>,
+    #[serde(default)]
+    developer_name: Option<String>,
+    #[serde(default)]
+    project_license: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct Shot {
+    #[serde(default)]
+    sizes: Vec<ShotSize>,
+}
+
+#[derive(Deserialize)]
+struct ShotSize {
+    src: String,
+    #[serde(default)]
+    width: Option<String>,
+}
+
+#[derive(Deserialize, Default)]
+struct Summary {
+    #[serde(default)]
+    download_size: Option<u64>,
+    #[serde(default)]
+    installed_size: Option<u64>,
+    #[serde(default)]
+    metadata: Option<SummaryMeta>,
+}
+
+#[derive(Deserialize, Default)]
+struct SummaryMeta {
+    #[serde(default)]
+    permissions: Option<Permissions>,
+}
+
+#[derive(Deserialize, Default)]
+struct Permissions {
+    #[serde(default)]
+    shared: Vec<String>,
+    #[serde(default)]
+    sockets: Vec<String>,
+    #[serde(default)]
+    devices: Vec<String>,
+    #[serde(default)]
+    filesystems: Vec<String>,
+}
+
+/// AppStream description markup (`<p>`, `<ul><li>`) as plain text.
+pub fn plain_text(html: &str) -> String {
+    let mut out = String::new();
+    let mut rest = html;
+    while let Some(i) = rest.find('<') {
+        out.push_str(&rest[..i]);
+        let Some(j) = rest[i..].find('>') else { break };
+        match rest[i + 1..i + j].trim_start_matches('/').split_whitespace().next().unwrap_or("") {
+            "li" if !rest[i + 1..].starts_with('/') => out.push_str("\n• "),
+            "p" | "ul" | "ol" | "li" | "br" => out.push('\n'),
+            _ => {}
+        }
+        rest = &rest[i + j + 1..];
+    }
+    out.push_str(rest);
+    let out = out.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&#39;", "'");
+    let lines: Vec<String> = out.lines().map(|l| l.split_whitespace().collect::<Vec<_>>().join(" ")).collect();
+    let mut text = lines.join("\n");
+    while text.contains("\n\n\n") {
+        text = text.replace("\n\n\n", "\n\n");
+    }
+    text.replace("\n\n• ", "\n• ").trim().to_string()
+}
+
+/// A Flatpak's sandbox holes in plain words, most far-reaching first.
+fn permission_words(p: &Permissions) -> Vec<String> {
+    let mut v: Vec<String> = vec![];
+    for f in &p.filesystems {
+        let (place, ro) = f.split_once(':').map_or((f.as_str(), false), |(a, m)| (a, m == "ro"));
+        let what = match place {
+            "host" => "all your files".to_string(),
+            "host-os" => "the system's programs and libraries".into(),
+            "host-etc" => "the system's settings (/etc)".into(),
+            "home" => "your home folder".into(),
+            p if p.starts_with("xdg-download") => "your Downloads folder".into(),
+            p if p.starts_with("xdg-documents") => "your Documents folder".into(),
+            p if p.starts_with("xdg-pictures") => "your Pictures folder".into(),
+            p if p.starts_with("xdg-music") => "your Music folder".into(),
+            p if p.starts_with("xdg-videos") => "your Videos folder".into(),
+            p if p.starts_with("xdg-run/") || p.starts_with("xdg-config/") || p.starts_with("xdg-data/") || p.starts_with("xdg-cache/") => continue,
+            p => format!("files in {p}"),
+        };
+        v.push(format!("{} {what}", if ro { "Can read" } else { "Can read and change" }));
+    }
+    if p.devices.iter().any(|d| d == "all") {
+        v.push("Can use all devices (webcam, USB, game controllers)".into());
+    }
+    if p.shared.iter().any(|s| s == "network") {
+        v.push("Can use the internet".into());
+    }
+    for s in &p.sockets {
+        match s.as_str() {
+            "x11" => v.push("Uses X11, where apps can see each other's windows and keystrokes".into()),
+            "pulseaudio" => v.push("Can play and record sound".into()),
+            "session-bus" => v.push("Can talk to every app and service in your session".into()),
+            "system-bus" => v.push("Can talk to system services".into()),
+            "ssh-auth" => v.push("Can use your SSH keys".into()),
+            "cups" => v.push("Can print".into()),
+            "pcsc" => v.push("Can use smart cards".into()),
+            _ => {}
+        }
+    }
+    if v.is_empty() {
+        v.push("No special permissions: it stays in its sandbox".into());
+    }
+    v
+}
+
+fn flathub_detail(id: &str) -> Result<Detail, String> {
+    let (app, sum) = std::thread::scope(|s| {
+        let sum = s.spawn(|| flathub_get(&format!("summary/{id}")).ok().and_then(|b| serde_json::from_str::<Summary>(&b).ok()).unwrap_or_default());
+        let app = flathub_get(&format!("appstream/{id}")).and_then(|b| serde_json::from_str::<Appstream>(&b).map_err(|e| format!("Unexpected answer from Flathub: {e}")));
+        (app, sum.join().unwrap_or_default())
+    });
+    let app = app?;
+    // The size nearest 752 px wide, which fits the page without scaling much.
+    let width = |z: &ShotSize| z.width.as_deref().and_then(|w| w.parse::<i64>().ok()).map_or(i64::MAX, |w| (w - 752).abs());
+    let screenshots = app.screenshots.iter().filter_map(|s| s.sizes.iter().filter(|z| z.src.starts_with(ICONS)).min_by_key(|z| width(z)).map(|z| z.src.clone())).take(8).collect();
+    Ok(Detail {
+        description: app.description.as_deref().map(plain_text).unwrap_or_default(),
+        screenshots,
+        permissions: sum.metadata.and_then(|m| m.permissions).map(|p| permission_words(&p)).unwrap_or_default(),
+        developer: app.developer_name,
+        license: app.project_license,
+        download_size: sum.download_size,
+        installed_size: sum.installed_size,
+    })
+}
+
+/// The `Description` field of a package manager's info output, with its indented continuation lines
+/// (`apt-cache show`, `dnf info`, `zypper info`, `pacman -Si`, `snap info`).
+pub fn description_field(out: &str) -> String {
+    let mut lines = out.lines().skip_while(|l| !l.to_lowercase().starts_with("description"));
+    let Some(first) = lines.next() else { return String::new() };
+    let mut text = vec![first.split_once(':').map(|x| x.1).unwrap_or("").trim().trim_start_matches('|').trim().to_string()];
+    for l in lines.take_while(|l| l.starts_with(char::is_whitespace)) {
+        let t = l.trim().trim_start_matches(':').trim();
+        text.push(if t == "." { String::new() } else { t.to_string() });
+    }
+    text.join("\n").trim().to_string()
+}
+
+/// Details for a Store entry; everything but Flathub has a description only.
+pub fn detail(source: &str, id: &str, sys: &System) -> Result<Detail, String> {
+    if !crate::plan::safe_ident(id) {
+        return Err("Unknown app".into());
+    }
+    let info = |prog: &str, args: &[&str]| Detail { description: capture(prog, args).map(|o| description_field(&o)).unwrap_or_default(), ..Detail::default() };
+    Ok(match source {
+        "flathub" => flathub_detail(id)?,
+        "snap" => info("snap", &["info", id]),
+        _ => match sys.native.filter(|n| crate::plan::manager_name(*n) == source) {
+            Some(Native::Apt) => info("apt-cache", &["show", "--no-all-versions", id]),
+            Some(Native::Dnf) => info(if has("dnf") { "dnf" } else { "yum" }, &["info", "-q", id]),
+            Some(Native::Zypper) => info("zypper", &["--non-interactive", "--no-refresh", "info", id]),
+            Some(Native::Pacman) => info("pacman", &["-Si", id]),
+            _ => Detail::default(),
+        },
+    })
 }
 
 fn flathub_search(q: &str) -> Result<Vec<Entry>, String> {
@@ -188,14 +431,7 @@ pub fn search(q: &str, sys: &System) -> Result<Vec<Entry>, String> {
         }
         (flat.join().unwrap_or_else(|_| Err("Flathub search stopped".into())), rest)
     });
-    match flat {
-        Ok(mut v) => {
-            v.extend(rest);
-            Ok(v)
-        }
-        Err(e) if rest.is_empty() => Err(e),
-        Err(_) => Ok(rest),
-    }
+    with_flathub(flat, rest)
 }
 
 #[cfg(test)]
@@ -213,6 +449,17 @@ mod tests {
         assert_eq!(parse_tabbed("dnf", "vlc\tPlayer\n"), vec![entry("dnf", "vlc", "Player")]);
         assert_eq!(parse_xbps("[-] vlc-3.0.21_1           Free and portable multimedia player\n[*] lib-x-1.0_2 x\n"), vec![entry("xbps", "vlc", "Free and portable multimedia player"), entry("xbps", "lib-x", "x")]);
         assert_eq!(parse_emerge("*  media-video/vlc\n      Latest version available: 3.0\n      Description:   VLC media player\n*  media-video/vlc-x [ Masked ]\n"), vec![entry("emerge", "vlc", "VLC media player"), entry("emerge", "vlc-x", "")]);
+    }
+
+    #[test]
+    fn details_in_plain_words() {
+        assert_eq!(plain_text("<p>\n  VLC plays &amp; streams.\n</p>\n<ul><li>Fast</li><li>Free</li></ul><p>End</p>"), "VLC plays & streams.\n• Fast\n• Free\n\nEnd");
+        let p = Permissions { shared: vec!["network".into(), "ipc".into()], sockets: vec!["x11".into(), "wayland".into()], devices: vec!["dri".into()], filesystems: vec!["xdg-download".into(), "home:ro".into(), "xdg-run/gvfs".into()] };
+        assert_eq!(permission_words(&p), ["Can read and change your Downloads folder", "Can read your home folder", "Can use the internet", "Uses X11, where apps can see each other's windows and keystrokes"]);
+        assert_eq!(permission_words(&Permissions::default()).len(), 1);
+        assert_eq!(description_field("Package: vlc\nDescription-en: multimedia player\n VLC plays files.\n .\n It streams.\nHomepage: x\n"), "multimedia player\nVLC plays files.\n\nIt streams.");
+        assert_eq!(description_field("Name : vlc\nDescription  : The player\n             : for all.\n"), "The player\nfor all.");
+        assert_eq!(description_field("name: vlc\ndescription: |\n  Plays everything.\ncommands:\n"), "Plays everything.");
     }
 
     #[test]
