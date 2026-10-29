@@ -284,6 +284,13 @@ fn history(app_id: Option<i64>, state: Shared<'_>) -> Result<Vec<Event>, String>
     state.store.lock().map_err(|e| e.to_string())?.events(app_id)
 }
 
+/// Disk space of each installed tracked app, by id.
+#[tauri::command]
+async fn app_sizes(state: Shared<'_>) -> Result<HashMap<i64, u64>, String> {
+    let apps = state.store.lock().map_err(|e| e.to_string())?.list()?;
+    blocking(move || library::sizes(&apps)).await
+}
+
 #[tauri::command]
 async fn scan_system() -> Result<Vec<library::SysPkg>, String> {
     blocking(library::scan).await
@@ -495,7 +502,7 @@ pub fn run(open: Option<String>) {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![detect_system, analyze, cancel_analyze, flatpak_remotes, remote_remove_plan, store_popular, store_category, store_detail, store_search, store_plan, list_upgrades, hold_update, unhold_update, upgrade_plan, update_app_plan, rollback_plan, fix_plan, take_opened, file_handler, set_file_handler, export_apps, import_apps, verify_plan, sandbox_preview, execute, list_apps, history, scan_system, uninstall_app, leftovers, remove_leftovers, uninstall_system, background_info, set_background, set_badge, update_info, update_check, update_install, update_set_channel, update_skip, open_link])
+        .invoke_handler(tauri::generate_handler![detect_system, analyze, cancel_analyze, flatpak_remotes, remote_remove_plan, store_popular, store_category, store_detail, store_search, store_plan, list_upgrades, hold_update, unhold_update, upgrade_plan, update_app_plan, rollback_plan, fix_plan, take_opened, file_handler, set_file_handler, export_apps, import_apps, verify_plan, sandbox_preview, execute, list_apps, app_sizes, history, scan_system, uninstall_app, leftovers, remove_leftovers, uninstall_system, background_info, set_background, set_badge, update_info, update_check, update_install, update_set_channel, update_skip, open_link])
         .run(tauri::generate_context!())
         .expect("error while running Unpack");
 }

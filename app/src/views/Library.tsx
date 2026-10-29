@@ -19,7 +19,12 @@ export default function Library({ version, onTask, onReview }: { version: number
   /** Folders a just-removed app left behind, offered for removal. */
   const [left, setLeft] = useState<{ id: number; name: string; paths: string[] } | null>(null);
 
-  const loadApps = useCallback(() => api.apps().then(setApps).catch((e) => setMsg(errText(e))), []);
+  const [sizes, setSizes] = useState<Record<number, number>>({});
+  const [bySize, setBySize] = useState(false);
+  const loadApps = useCallback(() => {
+    void api.appSizes().then(setSizes).catch(() => {});
+    return api.apps().then(setApps).catch((e) => setMsg(errText(e)));
+  }, []);
   const loadSys = useCallback(() => { setSys(null); api.scan().then(setSys).catch((e) => { setMsg(errText(e)); setSys([]); }); }, []);
 
   useEffect(() => { void loadApps(); }, [loadApps, version]);
@@ -64,7 +69,11 @@ export default function Library({ version, onTask, onReview }: { version: number
   const updated = useMemo(() => new Set(apps.flatMap((a) => a.replaced_by === null ? [] : [a.replaced_by])), [apps]);
 
   const ql = q.toLowerCase();
-  const tracked = useMemo(() => apps.filter((a) => a.status === "installed" && a.name.toLowerCase().includes(ql)), [apps, ql]);
+  const tracked = useMemo(() => {
+    const v = apps.filter((a) => a.status === "installed" && a.name.toLowerCase().includes(ql));
+    return bySize ? [...v].sort((a, b) => (sizes[b.id] ?? -1) - (sizes[a.id] ?? -1)) : v;
+  }, [apps, ql, bySize, sizes]);
+  const total = Object.values(sizes).reduce((a, b) => a + b, 0);
   const system = useMemo(() => (sys ?? []).filter((p) => p.name.toLowerCase().includes(ql)), [sys, ql]);
   /** The same app installed with more than one package manager: `vlc` from apt and `org.videolan.VLC` from Flathub. */
   const twins = useMemo(() => {
@@ -87,6 +96,11 @@ export default function Library({ version, onTask, onReview }: { version: number
             </button>
           ))}
         </div>
+        {tab === "tracked" && total > 0 && (
+          <button className={`chip cursor-pointer ${bySize ? "chip-ok" : ""}`} aria-pressed={bySize} onClick={() => setBySize((v) => !v)} title="Sort by the space each app takes">
+            {size(total)} in all{bySize ? " · largest first" : ""}
+          </button>
+        )}
         <label className="relative ml-auto w-64">
           <span className="sr-only">Search packages</span>
           <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-dim" aria-hidden />
@@ -108,7 +122,7 @@ export default function Library({ version, onTask, onReview }: { version: number
 
       <div className="card divide-y divide-line overflow-hidden">
         {tab === "tracked" && <div className="stagger divide-y divide-line">{tracked.map((a) => (
-          <Row key={a.id} title={a.name} sub={`${a.version ?? ""} ${a.kind} · ${when(a.installed_at)}`.trim()} status={a.status}
+          <Row key={a.id} title={a.name} sub={`${a.version ?? ""} ${a.kind} · ${when(a.installed_at)}${sizes[a.id] !== undefined ? ` · ${size(sizes[a.id])}` : ""}`.trim()} status={a.status}
             how={a.uninstall.type === "manager" ? `via ${a.uninstall.manager}` : a.uninstall.type === "files" ? `${a.uninstall.paths.length} files tracked` : a.uninstall.type === "manual" ? "remove manually" : a.uninstall.type === "container" ? `in container ${a.uninstall.container}` : ""}
             action={a.status === "installed" && <span className="flex gap-1">
               {updated.has(a.id) && <button className="btn btn-ghost" disabled={busy !== null} onClick={() => void rollback(a)} title="Go back to the version before the last update">
@@ -130,6 +144,8 @@ export default function Library({ version, onTask, onReview }: { version: number
     </div>
   );
 }
+
+const size = (b: number) => (b >= 1e9 ? `${(b / 1e9).toFixed(1)} GB` : b >= 1e6 ? `${(b / 1e6).toFixed(0)} MB` : `${Math.max(1, Math.round(b / 1e3))} kB`);
 
 const appKey = (p: SysPkg) => (p.manager === "flatpak" ? p.name.split(".").pop() ?? p.name : p.name).toLowerCase();
 

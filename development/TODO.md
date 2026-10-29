@@ -133,7 +133,7 @@ Containers: `scripts/test-distros.sh` (CLI build, as root plus a normal user wit
 - [ ] Verify "Open with Unpack" in GNOME Files, Dolphin and a browser's download list, and the single-instance hand-off (D-Bus) **(unverified)**
 - [x] Leftover cleaner after uninstall (`~/.config/<app>`, caches) with preview (Library offer, `unpack remove --purge`)
 - [ ] i18n
-- [ ] Disk usage per app
+- [x] Disk usage per app: Library shows each tracked app's size and the total, sorts largest first (`unpack list --size`); from the package manager (dpkg, rpm, pacman, apk, xbps), `flatpak list` sizes, snap files, or the tracked files
 
 ## Safety and trust
 - [x] Dependency and conflict preview: simulated install lists the other packages it pulls in and warns about removals (apt, dnf, pacman, apk, xbps; zypper needs root to simulate)

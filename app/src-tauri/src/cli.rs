@@ -18,7 +18,7 @@ Commands:
   info <source> <id>   Description, permissions and size of one search result
   remotes [remove <n>] Flatpak sources; add one with `unpack install <url>.flatpakrepo`
   get <source> <id>    Install one search result (source: flathub, snap, apt, dnf, zypper, pacman, apk, xbps, emerge)
-  list                 Apps installed with Unpack (--all: removed ones too)
+  list                 Apps installed with Unpack (--all: removed ones too; --size: disk space each takes)
   updates              What can be updated: system packages, Flatpaks, snaps, and apps from GitHub releases
                        (--notify: as a desktop notification, after auto-updating when that is on)
   background on|off    Check for updates every day while Unpack is closed (--auto: also install the
@@ -48,6 +48,7 @@ Options:
                        package manager can remove
       --purge          With remove: also delete leftover settings, cache and data folders
       --all            With list: include removed apps
+      --size           With list: show the disk space each app takes
       --skip           With hold: skip only the version offered now
       --notify         With updates: show a desktop notification instead
       --auto           With background on: also install updates that need no admin password
@@ -64,6 +65,7 @@ struct Opts {
     sandbox: bool,
     package: bool,
     all: bool,
+    size: bool,
     skip: bool,
     notify: bool,
     auto: bool,
@@ -85,6 +87,7 @@ fn parse(args: &[String]) -> Result<Opts, String> {
             "--sandbox" => o.sandbox = true,
             "--package" => o.package = true,
             "--all" => o.all = true,
+            "--size" => o.size = true,
             "--skip" => o.skip = true,
             "--notify" => o.notify = true,
             "--auto" => o.auto = true,
@@ -239,8 +242,10 @@ fn run(args: &[String]) -> Result<i32, String> {
             } else if apps.is_empty() {
                 println!("Nothing installed with Unpack yet.");
             } else {
+                let sizes = if o.size { library::sizes(&apps) } else { Default::default() };
                 for a in &apps {
-                    println!("{:>4}  {:<28} {:<14} {:<10} {:<9} {}", a.id, a.name, a.version.as_deref().unwrap_or("-"), a.kind, a.status, how(&a.uninstall));
+                    let size = sizes.get(&a.id).map(|b| format!("{:>9.1} MB  ", *b as f64 / 1_048_576.0)).unwrap_or_default();
+                    println!("{:>4}  {size}{:<28} {:<14} {:<10} {:<9} {}", a.id, a.name, a.version.as_deref().unwrap_or("-"), a.kind, a.status, how(&a.uninstall));
                 }
             }
         }

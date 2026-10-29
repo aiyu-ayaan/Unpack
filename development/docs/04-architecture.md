@@ -138,6 +138,7 @@ DB path: `$XDG_DATA_HOME/unpack/unpack.db` (default `~/.local/share/unpack/`). D
 | `execute(plan_id, as_root)` | Run the stored plan, emit `plan-log`, record app + event in SQLite |
 | `list_apps()` | Tracked apps from SQLite |
 | `history(app_id?)` | Event log |
+| `app_sizes()` | Bytes each installed tracked app takes, by id: `dpkg-query ${Installed-Size}`, `rpm -q --qf %{SIZE}`, `pacman -Qi`, `apk info -s`, `xbps-query -p installed_size`, one `flatpak list --columns=application,size,installation`, the snap's files in `/var/lib/snapd/snaps`, or the tracked files and folders; containers and untracked installs are left out |
 | `scan_system()` | Packages the system managers report (read-only) |
 | `uninstall_app(app_id)` | Run the stored `Uninstall` spec, mark row `removed` |
 | `leftovers(app_id)` / `remove_leftovers(app_id)` | Settings/cache/data folders named after the app (`~/.config`, `~/.cache`, `~/.local/share`, `~/.local/state`, `~/.var/app`); removal recomputes the list, the page never sends paths |

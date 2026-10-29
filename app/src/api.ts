@@ -92,6 +92,8 @@ export const api = {
   onAnalyzeProgress: (fn: (p: Fetched) => void) => listen<Fetched>("analyze-progress", (e) => fn(e.payload)),
   execute: (planId: string, asRoot: boolean) => invoke<RunResult>("execute", { planId, asRoot }),
   apps: () => invoke<App[]>("list_apps"),
+  /** Disk space in bytes of each installed tracked app, by id (missing when it can't be told). */
+  appSizes: () => invoke<Record<number, number>>("app_sizes"),
   history: (appId: number | null = null) => invoke<Event[]>("history", { appId }),
   scan: () => invoke<SysPkg[]>("scan_system"),
   uninstall: (appId: number) => invoke<RunResult>("uninstall_app", { appId }),
