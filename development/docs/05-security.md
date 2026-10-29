@@ -53,3 +53,9 @@ An advisory cited in research: PackageKit ≤ 1.1.13 let `InstallFiles`, `GetFil
 
 - The page picks updates by `{manager, name, user}` from the backend's own list; `upgrade_plan` checks every name with `safe_ident` and only accepts the system's own native manager, Flatpak and snap.
 - A new release of a tracked app is found by the backend (GitHub API, `safe_ident` on owner, repo and tag) and analyzed like any download: the user reviews the plan, the file is hashed, nothing runs before approval.
+
+## Sandbox preview
+
+- "Try it in a sandbox first" runs a script plan's single step with `bwrap --ro-bind / / --dev /dev --proc /proc --tmpfs /tmp --tmpfs /run --bind <throwaway> $HOME --ro-bind <work dir> <work dir> --unshare-all --die-with-parent --new-session`. The system is read-only, the network and every other namespace are separate, and home is an empty folder deleted afterwards. It stops after 2 minutes.
+- It is a preview, not a guarantee: a script can behave differently with network access or when it detects a sandbox, and files outside home are not reported. Readable files outside home (`/etc`, `/opt`) are visible to it, but it has no network to send them anywhere.
+- Ubuntu 24.04 and later restrict unprivileged user namespaces with AppArmor; bubblewrap has its own profile there, but whether `--unshare-net` works is **(unverified)**. When bwrap cannot start, the page says so instead of reporting a result.

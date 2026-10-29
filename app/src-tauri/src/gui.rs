@@ -2,7 +2,7 @@
 use crate::plan::{Plan, Uninstall};
 use crate::store::{App, Event, Store};
 use crate::system::{self, System};
-use crate::{analyze, catalog, fetch, fix, library, mime, ops, plan, runner, transfer, updates, upgrades, util};
+use crate::{analyze, catalog, fetch, fix, library, mime, ops, plan, runner, sandbox, transfer, updates, upgrades, util};
 use ops::RunResult;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -180,6 +180,13 @@ async fn import_apps(path: String) -> Result<Vec<transfer::Imported>, String> {
     .await?
 }
 
+/// Run a script plan in a bubblewrap sandbox (read-only system, no network, throwaway home) and report.
+#[tauri::command]
+async fn sandbox_preview(plan_id: String, state: Shared<'_>) -> Result<sandbox::Report, String> {
+    let plan = state.plans.lock().map_err(|e| e.to_string())?.get(&plan_id).cloned().ok_or("Unknown plan; analyze again")?;
+    blocking(move || sandbox::preview(&plan)).await?
+}
+
 #[tauri::command]
 fn cancel_analyze(state: Shared<'_>) {
     state.cancel.store(true, Ordering::SeqCst);
@@ -350,7 +357,7 @@ pub fn run(open: Option<String>) {
             std::thread::spawn(analyze::clean_old_work);
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![detect_system, analyze, cancel_analyze, store_popular, store_search, store_plan, list_upgrades, upgrade_plan, update_app_plan, fix_plan, take_opened, file_handler, set_file_handler, export_apps, import_apps, execute, list_apps, history, scan_system, uninstall_app, leftovers, remove_leftovers, uninstall_system, update_info, update_check, update_install, update_set_channel, update_skip, open_link])
+        .invoke_handler(tauri::generate_handler![detect_system, analyze, cancel_analyze, store_popular, store_search, store_plan, list_upgrades, upgrade_plan, update_app_plan, fix_plan, take_opened, file_handler, set_file_handler, export_apps, import_apps, sandbox_preview, execute, list_apps, history, scan_system, uninstall_app, leftovers, remove_leftovers, uninstall_system, update_info, update_check, update_install, update_set_channel, update_skip, open_link])
         .run(tauri::generate_context!())
         .expect("error while running Unpack");
 }

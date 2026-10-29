@@ -68,6 +68,8 @@ pub struct Plan {
     /// User may choose to run the main step as administrator.
     pub root_optional: bool,
     pub needs_root: bool,
+    /// A single script step the user can try in a sandbox first (`sandbox::preview`).
+    pub sandbox: bool,
     #[serde(skip)]
     pub uninstall: Uninstall,
     #[serde(skip)]
@@ -98,6 +100,7 @@ impl Plan {
             preview: None,
             root_optional: false,
             needs_root: false,
+            sandbox: false,
             uninstall: Uninstall::Traced,
             trace: false,
             discover_flatpak: false,
@@ -567,6 +570,7 @@ fn plan_script(p: &mut Plan, path: &Path, kind: Kind) {
         _ => "Run script",
     };
     p.step(label, false, Action::Cmd { program: prog, args, cwd: path.parent().map(Path::to_path_buf) });
+    p.sandbox = true;
     p.root_optional = true;
     p.trace = true;
     p.uninstall = Uninstall::Traced;

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { AlertTriangle, Check, CheckCircle2, ChevronRight, Copy, FileDown, Info, Loader2, Lock, Package, Play, Sparkles, X, XCircle } from "lucide-react";
-import { api, errText, type Fetched, type LogLine, type Plan } from "../api";
+import { AlertTriangle, Box, Check, CheckCircle2, ChevronRight, Copy, FileDown, Info, Loader2, Lock, Package, Play, Sparkles, X, XCircle } from "lucide-react";
+import { api, errText, type Fetched, type LogLine, type Plan, type SandboxReport } from "../api";
 import type { Incoming, Task } from "../App";
 import { Log } from "../components/Log";
 import { Banner, PageHeader, Progress } from "../components/ui";
@@ -37,11 +37,12 @@ export default function Install({ onInstalled, onTask, incoming, onTaken }: { on
   const [showPreview, setShowPreview] = useState(false);
   const [copied, setCopied] = useState(false);
   const [fetched, setFetched] = useState<Fetched | null>(null);
+  const [trial, setTrial] = useState<SandboxReport | "running" | string | null>(null);
   const planId = useRef<string | null>(null);
 
   const analyze = useCallback(async (input: string) => {
     if (!input.trim()) return;
-    setPhase("analyzing"); setError(null); setNotes([]); setPlan(null); setAsRoot(false); setShowPreview(false); setFetched(null);
+    setPhase("analyzing"); setError(null); setNotes([]); setPlan(null); setAsRoot(false); setShowPreview(false); setFetched(null); setTrial(null);
     try {
       const p = await api.analyze(input.trim(), allowHttp);
       planId.current = p.id; setPlan(p); setPhase("review");
@@ -54,7 +55,7 @@ export default function Install({ onInstalled, onTask, incoming, onTaken }: { on
     onTaken();
     if ("plan" in incoming) {
       setError(null); setNotes([]); setLines([]); setAsRoot(false); setShowPreview(false);
-      planId.current = incoming.plan.id; setPlan(incoming.plan); setPhase("review");
+      setTrial(null); planId.current = incoming.plan.id; setPlan(incoming.plan); setPhase("review");
     } else { setText(incoming.input); void analyze(incoming.input); }
   }, [incoming, phase, analyze, onTaken]);
 
@@ -102,7 +103,13 @@ export default function Install({ onInstalled, onTask, incoming, onTaken }: { on
     } catch (e) { setError(errText(e)); setPhase("failed"); }
   };
 
-  const reset = () => { setPhase("idle"); setPlan(null); setError(null); setText(""); setLines([]); };
+  const tryIt = async () => {
+    if (!plan) return;
+    setTrial("running");
+    try { setTrial(await api.sandboxPreview(plan.id)); } catch (e) { setTrial(errText(e)); }
+  };
+
+  const reset = () => { setTrial(null); setPhase("idle"); setPlan(null); setError(null); setText(""); setLines([]); };
   const sudo = error?.match(/^\s+(sudo sh -c .*)$/m)?.[1];
   const copy = (s: string) => { void navigator.clipboard.writeText(s).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }); };
 
@@ -192,6 +199,22 @@ export default function Install({ onInstalled, onTask, incoming, onTaken }: { on
                 <ChevronRight className={`h-4 w-4 transition-transform duration-200 ${showPreview ? "rotate-90" : ""}`} aria-hidden /> {showPreview ? "Hide" : "Show"} contents
               </button>
               {showPreview && <pre className="enter mt-2 max-h-72 overflow-auto rounded-md border border-line bg-term p-3 font-mono text-xs">{plan.preview}</pre>}
+            </div>
+          )}
+
+          {phase === "review" && plan.sandbox && (
+            <div className="flex flex-col gap-2">
+              <button className="btn self-start" disabled={trial === "running"} onClick={() => void tryIt()} title="Runs it with the system read-only, no network and an empty home folder">
+                {trial === "running" ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Box className="h-4 w-4" aria-hidden />} Try it in a sandbox first</button>
+              {typeof trial === "string" && trial !== "running" && <Banner tone="bad" icon={<XCircle className="h-4 w-4" />}>{trial}</Banner>}
+              {trial && typeof trial === "object" && (
+                <Banner tone={trial.code === 0 ? "info" : "warn"} icon={<Box className="h-4 w-4" />}>
+                  <div>In the sandbox it {trial.timed_out ? "was stopped after 2 minutes" : trial.code === 0 ? "finished" : `failed (exit ${trial.code ?? "signal"})`}. The network was off and the system read-only, so a real run can differ.</div>
+                  <div className="mt-1">{trial.files.length ? `It created ${trial.files.length} file${trial.files.length > 1 ? "s" : ""} in your home folder:` : "It created no files in your home folder."}</div>
+                  {trial.files.length > 0 && <ul className="my-1 max-h-32 overflow-auto font-mono text-xs">{trial.files.map((f) => <li key={f}>{f}</li>)}</ul>}
+                  {trial.output.length > 0 && <pre className="mt-1 max-h-40 overflow-auto rounded border border-line bg-term p-2 font-mono text-[11px]">{trial.output.join("\n")}</pre>}
+                </Banner>
+              )}
             </div>
           )}
 

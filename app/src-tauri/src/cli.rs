@@ -1,7 +1,7 @@
 //! `unpack <command>`: the window's analyze → plan → install flow in a terminal, on the same database.
 use crate::plan::{Plan, Uninstall};
 use crate::store::{App, Store};
-use crate::{analyze, catalog, fix, library, ops, plan as plans, runner, system, transfer, updates, upgrades, util};
+use crate::{analyze, catalog, fix, library, ops, plan as plans, runner, sandbox, system, transfer, updates, upgrades, util};
 use std::io::{IsTerminal, Write};
 use std::sync::Mutex;
 
@@ -32,6 +32,7 @@ Options:
   -y, --yes            Do not ask before installing or removing
       --root           Run the main step as administrator, when the plan allows it
       --allow-http     Accept a plain http:// link
+      --sandbox        With check or install: first try a script in a sandbox (bubblewrap) and show what it did
       --purge          With remove: also delete leftover settings, cache and data folders
       --all            With list: include removed apps
       --json           Machine-readable output
@@ -44,6 +45,7 @@ struct Opts {
     root: bool,
     http: bool,
     purge: bool,
+    sandbox: bool,
     all: bool,
     json: bool,
     args: Vec<String>,
@@ -57,6 +59,7 @@ fn parse(args: &[String]) -> Result<Opts, String> {
             "--root" => o.root = true,
             "--allow-http" => o.http = true,
             "--purge" => o.purge = true,
+            "--sandbox" => o.sandbox = true,
             "--all" => o.all = true,
             "--json" => o.json = true,
             s if s.starts_with('-') && s.len() > 1 => return Err(format!("unknown option {s}. See `unpack --help`.")),
@@ -251,6 +254,18 @@ fn check(text: &str, o: &Opts) -> Result<Plan, String> {
         json(&plan)?;
     } else {
         show(&plan);
+    }
+    if o.sandbox {
+        let r = sandbox::preview(&plan)?;
+        if o.json {
+            json(&r)?;
+        } else {
+            println!("Sandbox run (no network, read-only system, throwaway home): {}", match (r.timed_out, r.code) { (true, _) => "stopped after 2 minutes".into(), (_, Some(c)) => format!("exit {c}"), _ => "killed".into() });
+            for l in &r.output {
+                println!("  | {l}");
+            }
+            println!("Files it created in home: {}", if r.files.is_empty() { "none".into() } else { r.files.join(", ") });
+        }
     }
     Ok(plan)
 }

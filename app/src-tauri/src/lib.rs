@@ -11,6 +11,7 @@ pub mod mime;
 pub mod ops;
 pub mod plan;
 pub mod runner;
+pub mod sandbox;
 pub mod sniff;
 pub mod store;
 pub mod system;

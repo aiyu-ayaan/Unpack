@@ -42,6 +42,7 @@ Unpack/
         libcheck.rs         `ldd` over a native package's files; which package provides a missing library, per manager
         mime.rs             "Open with Unpack": hidden `unpack-open.desktop` for package MIME types, set as default with `xdg-mime`
         transfer.rs         export the installed apps as JSON; on import, how each comes back (Store id, original link, or not)
+        sandbox.rs          try a single script plan in bubblewrap: read-only `/`, no network, throwaway home; reports output and files
         catalog.rs          Store: Flathub popular/search (HTTPS API) plus native and snap search (local CLIs)
 ```
 
@@ -120,6 +121,7 @@ DB path: `$XDG_DATA_HOME/unpack/unpack.db` (default `~/.local/share/unpack/`). D
 | `take_opened()` | The file `unpack open <file>` started the window with, once; the page checks it like a dropped file |
 | `file_handler()` / `set_file_handler(on)` | Whether "Open with Unpack" is on; write or remove `~/.local/share/applications/unpack-open.desktop` (`Exec=<AppImage or binary> open %f`) and set or clear it as the default for `.deb`, `.rpm`, AppImage, Flatpak and snap types |
 | `export_apps()` / `import_apps(path)` | Write `~/unpack-apps.json` (`{unpack: 1, apps: [{name, kind, source, manager, ident}]}`); read one back with a `way` per app: `store` (Flatpak, snap, or a native package that came from the repositories, on the same manager), `input` (the original https or git link), or `none` with a reason (local file, `curl | sh`, other distro) |
+| `sandbox_preview(plan_id)` | Run a script plan's one step under `bwrap --ro-bind / / --unshare-all` with a throwaway home (2 minute limit); returns exit code, output and the files it created in home. Plans that allow it have `sandbox: true` |
 | `cancel_analyze()` | Stop the running analyze: the call returns `Cancelled` at once, the worker stops at its next check and removes its work folder |
 | `execute(plan_id, as_root)` | Run the stored plan, emit `plan-log`, record app + event in SQLite |
 | `list_apps()` | Tracked apps from SQLite |

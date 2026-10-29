@@ -5,7 +5,7 @@ export type Step = { label: string; display: string; needs_root: boolean };
 export type Plan = {
   id: string; title: string; kind: string; name: string; version: string | null;
   source: string; fetched: string | null; sha256: string | null; warnings: string[]; advice: string[];
-  steps: Step[]; supported: boolean; preview: string | null;
+  steps: Step[]; supported: boolean; preview: string | null; sandbox: boolean;
   root_optional: boolean; needs_root: boolean;
 };
 export type SystemInfo = {
@@ -34,6 +34,7 @@ export type Fetched = { done: number; total: number | null };
 export type Upgrade = { manager: string; name: string; current: string; latest: string; user: boolean; app_id: number | null };
 export type Way = { type: "store"; source: string; id: string } | { type: "input"; input: string } | { type: "none"; why: string };
 export type Imported = { item: { name: string; kind: string; source: string | null }; way: Way };
+export type SandboxReport = { code: number | null; timed_out: boolean; files: string[]; output: string[] };
 export type Entry = { source: string; id: string; name: string; summary: string; icon: string | null };
 
 export const api = {
@@ -56,6 +57,8 @@ export const api = {
   /** Saves the installed apps to ~/unpack-apps.json and returns that path. */
   exportApps: () => invoke<string>("export_apps"),
   importApps: (path: string) => invoke<Imported[]>("import_apps", { path }),
+  /** Runs a script plan in a bubblewrap sandbox: read-only system, no network, throwaway home. */
+  sandboxPreview: (planId: string) => invoke<SandboxReport>("sandbox_preview", { planId }),
   cancelAnalyze: () => invoke<void>("cancel_analyze"),
   onAnalyzeProgress: (fn: (p: Fetched) => void) => listen<Fetched>("analyze-progress", (e) => fn(e.payload)),
   execute: (planId: string, asRoot: boolean) => invoke<RunResult>("execute", { planId, asRoot }),

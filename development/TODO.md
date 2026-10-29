@@ -107,7 +107,8 @@ Containers: `scripts/test-distros.sh` (CLI build, as root plus a normal user wit
 - [x] "Fix my install": missing libfuse2, no flatpak/snapd, missing exec bit, missing shared libraries with the providing package per manager (Library > Fix, `unpack fix`)
 - [ ] Verify library providers: `dnf repoquery --whatprovides`, `zypper search --provides`, `pacman -F` (needs `pacman -Fy`), `apk search so:` **(unverified)**
 - [ ] Staged install → build native package (fpm-like) so PM owns uninstall
-- [ ] Sandbox untrusted scripts (bubblewrap / firejail preview)
+- [x] Sandbox untrusted scripts: bubblewrap preview for single-script plans (Install > Try it in a sandbox first, `unpack check --sandbox`)
+- [ ] Verify the bwrap preview on Ubuntu 24.04 (AppArmor userns restriction), Fedora and Arch desktops **(unverified: the dev shell blocks namespaces)**
 - [ ] Container fallback for foreign formats (distrobox export)
 - [ ] Polkit action + narrow privileged helper instead of generic `pkexec`
 - [x] Export / import tracked list (move to new machine): Settings > Move to another computer, `unpack export` / `unpack import`
