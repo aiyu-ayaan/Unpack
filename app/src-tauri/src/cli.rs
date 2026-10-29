@@ -1,7 +1,7 @@
 //! `unpack <command>`: the window's analyze → plan → install flow in a terminal, on the same database.
 use crate::plan::{Plan, Uninstall};
 use crate::store::{App, Store};
-use crate::{analyze, library, ops, runner, system, updates, util};
+use crate::{analyze, catalog, library, ops, plan as plans, runner, system, updates, util};
 use std::io::{IsTerminal, Write};
 use std::sync::Mutex;
 
@@ -14,6 +14,8 @@ With no command the desktop app opens (the command-line-only build prints this h
 Commands:
   check <input>        Show the plan for a file, link, git address or curl/wget command; nothing runs
   install <input>      Show the plan, ask, install, and track it
+  search <words>       Find apps on Flathub, the Snap Store and your distro's repositories
+  get <source> <id>    Install one search result (source: flathub, snap, apt, dnf, zypper, pacman, apk)
   list                 Apps installed with Unpack (--all: removed ones too)
   remove <id|name>     Uninstall a tracked app (--purge: also its settings and cache folders)
   scan                 Every package the system's package managers report
@@ -120,6 +122,26 @@ fn run(args: &[String]) -> Result<i32, String> {
             return Ok(if plan.supported { 0 } else { 2 });
         }
         "install" => return install(&input(&o, cmd)?, &o),
+        "search" => {
+            let found = catalog::search(&input(&o, cmd)?, &system::detect())?;
+            if o.json {
+                json(&found)?;
+            } else if found.is_empty() {
+                println!("Nothing found.");
+            } else {
+                for e in &found {
+                    println!("{:<8} {:<40} {}", e.source, e.id, e.summary);
+                }
+                println!("Install one with `unpack get <source> <id>`.");
+            }
+        }
+        "get" => {
+            let [source, id] = o.args.as_slice() else { return Err("get needs a source and an id, as `unpack search` lists them.".into()) };
+            let mut plan = plans::plan_repo(source, id, &system::detect());
+            plan.id = analyze::new_id();
+            if o.json { json(&plan)?; } else { show(&plan); }
+            return run_plan(plan, &o);
+        }
         "list" => {
             let apps: Vec<App> = store()?.into_inner().map_err(|e| e.to_string())?.list()?.into_iter().filter(|a| o.all || a.status == "installed").collect();
             if o.json {
@@ -251,7 +273,11 @@ fn emitter(json: bool) -> impl Fn(&str, &str) {
 }
 
 fn install(text: &str, o: &Opts) -> Result<i32, String> {
-    let plan = check(text, o)?;
+    run_plan(check(text, o)?, o)
+}
+
+/// Ask, run and record a plan the user has been shown.
+fn run_plan(plan: Plan, o: &Opts) -> Result<i32, String> {
     if !plan.supported {
         return Ok(2);
     }
@@ -275,7 +301,9 @@ fn install(text: &str, o: &Opts) -> Result<i32, String> {
             }
             Ok(0)
         }
-        (e, _) => Err(e.clone().unwrap_or_else(|| "install failed".into())),
+        // A fix or an in-place update records no new app.
+        (None, None) => Ok(0),
+        (Some(e), _) => Err(e.clone()),
     }
 }
 

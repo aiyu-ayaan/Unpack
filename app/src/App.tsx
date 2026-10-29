@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { History as HistoryIcon, Library as LibraryIcon, Loader2, MonitorCog, Moon, PackagePlus, Settings as SettingsIcon, ShieldAlert, Sun } from "lucide-react";
-import { api, type SystemInfo } from "./api";
+import { Store as StoreIcon, History as HistoryIcon, Library as LibraryIcon, Loader2, MonitorCog, Moon, PackagePlus, Settings as SettingsIcon, ShieldAlert, Sun } from "lucide-react";
+import { api, type Plan, type SystemInfo } from "./api";
 import Install from "./views/Install";
 import Library from "./views/Library";
+import Store from "./views/Store";
 import System from "./views/System";
 import History from "./views/History";
 import Settings from "./views/Settings";
@@ -13,6 +14,7 @@ import { Progress } from "./components/ui";
 
 const NAV = [
   { id: "install", label: "Install", icon: PackagePlus },
+  { id: "store", label: "Store", icon: StoreIcon },
   { id: "library", label: "Library", icon: LibraryIcon },
   { id: "system", label: "This computer", icon: MonitorCog },
   { id: "history", label: "History", icon: HistoryIcon },
@@ -21,6 +23,8 @@ const NAV = [
 type View = (typeof NAV)[number]["id"];
 /** Work in progress, shown in the status bar. `progress` null = unknown length. */
 export type Task = { label: string; progress: number | null } | null;
+/** Something for the Install view to show: a plan built elsewhere (Store, Updates, Fix) or an input to check. */
+export type Incoming = { plan: Plan } | { input: string };
 
 function useTheme() {
   const [theme, setTheme] = useState<"dark" | "light">(() => {
@@ -39,6 +43,8 @@ export default function App() {
   // Bumped after each install so Library and History reload.
   const [version, setVersion] = useState(0);
   const [task, setTask] = useState<Task>(null);
+  const [incoming, setIncoming] = useState<Incoming | null>(null);
+  const review = (i: Incoming) => { setIncoming(i); setView("install"); };
   const [sys, setSys] = useState<SystemInfo | null>(null);
   const [sysErr, setSysErr] = useState<string | null>(null);
   const [theme, toggleTheme] = useTheme();
@@ -72,8 +78,9 @@ export default function App() {
         <div className="flex min-w-0 flex-1 flex-col">
           {task && <Progress value={task.progress} label={task.label} />}
           <main className="min-h-0 flex-1 overflow-auto bg-bg px-10 py-8">
-            <div hidden={view !== "install"}><Install onInstalled={() => setVersion((v) => v + 1)} onTask={setTask} /></div>
+            <div hidden={view !== "install"}><Install onInstalled={() => setVersion((v) => v + 1)} onTask={setTask} incoming={incoming} onTaken={() => setIncoming(null)} /></div>
             <div key={view} className="enter">
+              {view === "store" && <Store version={version} onReview={review} />}
               {view === "library" && <Library version={version} onTask={setTask} />}
               {view === "system" && <System s={sys} err={sysErr} />}
               {view === "history" && <History version={version} />}

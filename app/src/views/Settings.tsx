@@ -77,7 +77,7 @@ export default function Settings({ u }: { u: Update }) {
       <Card title="About Unpack">
         <Row k="Version">{info?.version ?? "…"}</Row>
         <Row k="Installed as">{info ? (info.self_install ? "AppImage" : "System package or dev build") : "…"}</Row>
-        <Row k="Privacy">Stays on this computer; only update checks use the network</Row>
+        <Row k="Privacy">Stays on this computer; only update checks and the Store use the network</Row>
         <LinkRow icon={<Code2 className="h-[18px] w-[18px]" />} title="Source code" sub="github.com/aiyu-ayaan/Unpack" to="repo" />
         <LinkRow icon={<Bug className="h-[18px] w-[18px]" />} title="Report a problem" sub="Open an issue on GitHub" to="issues" />
       </Card>

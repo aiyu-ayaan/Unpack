@@ -1,5 +1,5 @@
 //! Install and remove with their SQLite record. Shared by the window and the command line.
-use crate::plan::{Plan, Uninstall};
+use crate::plan::{Plan, Track, Uninstall};
 use crate::runner::{self, Emit};
 use crate::store::{App, Store};
 use crate::system::System;
@@ -30,13 +30,25 @@ pub fn install(plan: &Plan, as_root: bool, sys: &System, store: &Mutex<Store>, e
     let db = lock(store)?;
     Ok(match result {
         Ok(o) => {
+            // The download and build folder is no longer needed; a failed run keeps it for a retry.
+            let _ = std::fs::remove_dir_all(cache_dir().join("work").join(&plan.id));
+            if plan.track == Track::Nothing {
+                db.event(None, "info", &format!("{} done", plan.title));
+                return Ok(RunResult { ok: true, app_id: None, error: None, notes: o.notes });
+            }
             let id = db.add_app(&plan.name, plan.version.as_deref(), &plan.kind, &plan.source, plan.sha256.as_deref(), &o.uninstall)?;
             db.event(Some(id), "info", &format!("Installed from {}", plan.source));
             for n in &o.notes {
                 db.event(Some(id), "warn", n);
             }
-            // The download and build folder is no longer needed; a failed run keeps it for a retry.
-            let _ = std::fs::remove_dir_all(cache_dir().join("work").join(&plan.id));
+            if let Track::Replace(old) = plan.track {
+                let rec = db.get(old)?;
+                drop(db);
+                replace_old(&rec, &o.uninstall, sys, emit);
+                let db = lock(store)?;
+                db.set_status(old, "updated")?;
+                db.event(Some(old), "info", &format!("Updated: replaced by app {id}"));
+            }
             RunResult { ok: true, app_id: Some(id), error: None, notes: o.notes }
         }
         Err(e) => {
@@ -44,6 +56,20 @@ pub fn install(plan: &Plan, as_root: bool, sys: &System, store: &Mutex<Store>, e
             RunResult { ok: false, app_id: None, error: Some(e), notes: vec![] }
         }
     })
+}
+
+/// After an update that was a new download: delete the old version's files the new one did not reuse.
+/// A package manager already replaced its own package in place.
+fn replace_old(old: &App, new: &Uninstall, sys: &System, emit: Emit) {
+    let Uninstall::Files { paths } = &old.uninstall else { return };
+    let keep: &[String] = match new {
+        Uninstall::Files { paths } => paths,
+        _ => &[],
+    };
+    let stale: Vec<String> = paths.iter().filter(|p| !keep.contains(p)).cloned().collect();
+    if let Err(e) = runner::uninstall(&Uninstall::Files { paths: stale }, sys, emit) {
+        emit("warn", &format!("The old version's files were not all removed: {e}"));
+    }
 }
 
 pub fn uninstall(app_id: i64, sys: &System, store: &Mutex<Store>, emit: Emit) -> Result<RunResult, String> {

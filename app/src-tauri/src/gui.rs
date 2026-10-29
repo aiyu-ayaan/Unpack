@@ -2,7 +2,7 @@
 use crate::plan::{Plan, Uninstall};
 use crate::store::{App, Event, Store};
 use crate::system::{self, System};
-use crate::{analyze, fetch, library, ops, runner, updates, util};
+use crate::{analyze, catalog, fetch, library, ops, plan, runner, updates, util};
 use ops::RunResult;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -75,6 +75,30 @@ async fn analyze(input: String, allow_http: bool, app: AppHandle, state: Shared<
     .await??;
     st.plans.lock().map_err(|e| e.to_string())?.insert(plan.id.clone(), plan.clone());
     Ok(plan)
+}
+
+/// Keep a plan built by the backend (not by `analyze`) so `execute` can run it by id.
+fn keep(st: &AppState, mut plan: Plan) -> Result<Plan, String> {
+    plan.id = analyze::new_id();
+    st.plans.lock().map_err(|e| e.to_string())?.insert(plan.id.clone(), plan.clone());
+    Ok(plan)
+}
+
+#[tauri::command]
+async fn store_popular() -> Result<Vec<catalog::Entry>, String> {
+    blocking(catalog::popular).await?
+}
+
+#[tauri::command]
+async fn store_search(query: String) -> Result<Vec<catalog::Entry>, String> {
+    blocking(move || catalog::search(&query, &system::detect())).await?
+}
+
+/// The page names a source and an id from the Store; the backend builds and checks the plan.
+#[tauri::command]
+async fn store_plan(source: String, id: String, state: Shared<'_>) -> Result<Plan, String> {
+    let p = blocking(move || plan::plan_repo(&source, &id, &system::detect())).await?;
+    keep(&state, p)
 }
 
 #[tauri::command]
@@ -245,7 +269,7 @@ pub fn run() {
             std::thread::spawn(analyze::clean_old_work);
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![detect_system, analyze, cancel_analyze, execute, list_apps, history, scan_system, uninstall_app, leftovers, remove_leftovers, uninstall_system, update_info, update_check, update_install, update_set_channel, update_skip, open_link])
+        .invoke_handler(tauri::generate_handler![detect_system, analyze, cancel_analyze, store_popular, store_search, store_plan, execute, list_apps, history, scan_system, uninstall_app, leftovers, remove_leftovers, uninstall_system, update_info, update_check, update_install, update_set_channel, update_skip, open_link])
         .run(tauri::generate_context!())
         .expect("error while running Unpack");
 }

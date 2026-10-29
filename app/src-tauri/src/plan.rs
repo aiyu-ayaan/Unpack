@@ -37,6 +37,17 @@ pub enum Uninstall {
     Manual { note: String },
 }
 
+/// What a successful run does to the database.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Track {
+    /// Record a new app.
+    New,
+    /// Record a new app and remove the files of this older record (an update that is a new download).
+    Replace(i64),
+    /// Record nothing: a fix or an in-place update of something already there.
+    Nothing,
+}
+
 #[derive(Serialize, Clone, Debug)]
 pub struct Plan {
     pub id: String,
@@ -63,6 +74,8 @@ pub struct Plan {
     pub discover_flatpak: bool,
     #[serde(skip)]
     pub verify: Option<(PathBuf, String)>,
+    #[serde(skip)]
+    pub track: Track,
 }
 
 impl Plan {
@@ -86,6 +99,7 @@ impl Plan {
             trace: false,
             discover_flatpak: false,
             verify: None,
+            track: Track::New,
         }
     }
 
@@ -199,7 +213,7 @@ pub fn install_pkgs(native: Native, pkgs: &[&str]) -> (String, Vec<String>) {
     (prog.into(), a)
 }
 
-fn bootstrap(plan: &mut Plan, sys: &System, label: &str, pkgs: &[&str]) {
+pub fn bootstrap(plan: &mut Plan, sys: &System, label: &str, pkgs: &[&str]) {
     match sys.native {
         Some(n) => {
             let (p, a) = install_pkgs(n, pkgs);
@@ -423,7 +437,7 @@ fn plan_flatpak(p: &mut Plan, kind: Kind, abs: &str, sys: &System) {
     }
 }
 
-fn fuse2_present() -> bool {
+pub fn fuse2_present() -> bool {
     if let Ok(o) = capture("ldconfig", &["-p"]) {
         return o.contains("libfuse.so.2");
     }
@@ -432,7 +446,7 @@ fn fuse2_present() -> bool {
         .any(|p| Path::new(p).exists())
 }
 
-fn fuse2_package(native: Native) -> &'static str {
+pub fn fuse2_package(native: Native) -> &'static str {
     match native {
         Native::Apt => if capture("apt-cache", &["show", "libfuse2t64"]).is_ok() { "libfuse2t64" } else { "libfuse2" },
         Native::Dnf => "fuse-libs",
@@ -779,10 +793,71 @@ pub fn dsc_sums(text: &str) -> Vec<(String, String)> {
     out
 }
 
+/// A package or app id that is safe to hand to a package manager as one argument.
+pub fn safe_ident(ident: &str) -> bool {
+    !ident.is_empty() && ident.len() < 256 && !ident.starts_with('-') && ident.chars().all(|c| c.is_ascii_alphanumeric() || "+._:@-".contains(c))
+}
+
+/// Install `ident` from a configured source: `flathub`, `snap`, or the native manager's name (`apt`, `dnf`…).
+pub fn plan_repo(source: &str, ident: &str, sys: &System) -> Plan {
+    let mut p = Plan::new(source, ident, &format!("{source}:{ident}"));
+    if !safe_ident(ident) {
+        p.refuse(&format!("Refusing unsafe package name: {ident:?}"), &[]);
+        return p;
+    }
+    match source {
+        "flathub" => {
+            if !has("flatpak") {
+                bootstrap(&mut p, sys, "Install Flatpak", &["flatpak"]);
+                if !p.supported { return p; }
+            }
+            p.cmd("Add Flathub", false, "flatpak", &["remote-add", "--user", "--if-not-exists", "flathub", "https://dl.flathub.org/repo/flathub.flatpakrepo"], None);
+            p.cmd("Install from Flathub", false, "flatpak", &["install", "--user", "-y", "--noninteractive", "flathub", ident], None);
+            p.uninstall = Uninstall::Manager { manager: "flatpak".into(), ident: ident.into(), user: true };
+        }
+        "snap" => {
+            if !has("snap") {
+                p.refuse("Snap support (snapd) isn't installed.", &["Install the Flathub version instead, or install snapd first."]);
+                return p;
+            }
+            let classic = capture("snap", &["info", ident]).is_ok_and(|i| i.lines().any(|l| l.contains(" classic")));
+            let mut args = vec!["install", ident];
+            if classic {
+                p.warnings.push("This snap uses classic confinement (full system access).".into());
+                args.push("--classic");
+            }
+            p.cmd("Install from the Snap Store", true, "snap", &args, None);
+            p.uninstall = Uninstall::Manager { manager: "snap".into(), ident: ident.into(), user: false };
+        }
+        _ => match sys.native.filter(|n| manager_name(*n) == source) {
+            Some(n) => {
+                let (prog, args) = install_pkgs(n, &[ident]);
+                p.step("Install from your distro's repositories", true, Action::Cmd { program: prog, args, cwd: None });
+                p.uninstall = Uninstall::Manager { manager: source.into(), ident: ident.into(), user: false };
+            }
+            None => p.refuse(&format!("{source} is not this system's package manager."), &[]),
+        },
+    }
+    if p.supported && sys.immutable && source != "flathub" {
+        p.warnings.push("This system has a read-only base. System-wide package installs may need a reboot or may be undone by updates; Flatpak is safer.".into());
+    }
+    p
+}
+
+/// The name records use for a native manager: `apt`, `dnf`…
+pub fn manager_name(n: Native) -> &'static str {
+    match n {
+        Native::Apt => "apt",
+        Native::Dnf => "dnf",
+        Native::Zypper => "zypper",
+        Native::Pacman => "pacman",
+        Native::Apk => "apk",
+    }
+}
+
 /// Removal command for a package-manager-owned install.
 pub fn removal(manager: &str, ident: &str, user: bool) -> Result<(String, Vec<String>, bool), String> {
-    let ok = !ident.is_empty() && !ident.starts_with('-') && ident.chars().all(|c| c.is_ascii_alphanumeric() || "+._:@-".contains(c));
-    if !ok {
+    if !safe_ident(ident) {
         return Err(format!("Refusing unsafe package name: {ident:?}"));
     }
     let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();

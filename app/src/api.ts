@@ -31,10 +31,15 @@ export type Offer = { version: string; url: string; notes: string | null };
 export type Link = "repo" | "issues" | "developer" | "site";
 export type LogLine = { plan_id: string; stream: string; line: string };
 export type Fetched = { done: number; total: number | null };
+export type Entry = { source: string; id: string; name: string; summary: string; icon: string | null };
 
 export const api = {
   system: () => invoke<SystemInfo>("detect_system"),
   analyze: (input: string, allowHttp: boolean) => invoke<Plan>("analyze", { input, allowHttp }),
+  storePopular: () => invoke<Entry[]>("store_popular"),
+  storeSearch: (query: string) => invoke<Entry[]>("store_search", { query }),
+  /** A reviewable plan for a Store entry; the backend checks the id and keeps the plan. */
+  storePlan: (source: string, id: string) => invoke<Plan>("store_plan", { source, id }),
   cancelAnalyze: () => invoke<void>("cancel_analyze"),
   onAnalyzeProgress: (fn: (p: Fetched) => void) => listen<Fetched>("analyze-progress", (e) => fn(e.payload)),
   execute: (planId: string, asRoot: boolean) => invoke<RunResult>("execute", { planId, asRoot }),

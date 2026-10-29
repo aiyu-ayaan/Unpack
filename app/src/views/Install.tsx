@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { AlertTriangle, Check, CheckCircle2, ChevronRight, Copy, FileDown, Info, Loader2, Lock, Package, Play, Sparkles, X, XCircle } from "lucide-react";
 import { api, errText, type Fetched, type LogLine, type Plan } from "../api";
-import type { Task } from "../App";
+import type { Incoming, Task } from "../App";
 import { Log } from "../components/Log";
 import { Banner, PageHeader, Progress } from "../components/ui";
 
@@ -24,7 +24,7 @@ function activeStep(plan: Plan, lines: LogLine[]): number {
 
 const mb = (b: number) => `${(b / 1048576).toFixed(1)} MB`;
 
-export default function Install({ onInstalled, onTask }: { onInstalled: () => void; onTask: (t: Task) => void }) {
+export default function Install({ onInstalled, onTask, incoming, onTaken }: { onInstalled: () => void; onTask: (t: Task) => void; incoming: Incoming | null; onTaken: () => void }) {
   const [text, setText] = useState("");
   const [phase, setPhase] = useState<Phase>("idle");
   const [plan, setPlan] = useState<Plan | null>(null);
@@ -47,6 +47,16 @@ export default function Install({ onInstalled, onTask }: { onInstalled: () => vo
       planId.current = p.id; setPlan(p); setPhase("review");
     } catch (e) { const m = errText(e); setError(m === "Cancelled" ? null : m); setPhase("idle"); }
   }, [allowHttp]);
+
+  // A plan or input handed over by another view replaces whatever is here, unless an install is running.
+  useEffect(() => {
+    if (!incoming || phase === "running" || phase === "analyzing") return;
+    onTaken();
+    if ("plan" in incoming) {
+      setError(null); setNotes([]); setLines([]); setAsRoot(false); setShowPreview(false);
+      planId.current = incoming.plan.id; setPlan(incoming.plan); setPhase("review");
+    } else { setText(incoming.input); void analyze(incoming.input); }
+  }, [incoming, phase, analyze, onTaken]);
 
   useEffect(() => {
     const un = api.onAnalyzeProgress(setFetched);

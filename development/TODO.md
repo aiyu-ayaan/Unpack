@@ -98,6 +98,9 @@ Containers: `scripts/test-distros.sh` (CLI build, as root plus a normal user wit
 - [ ] AUR PKGBUILD, COPR/PPA notes
 - [x] CI (GitHub Actions, `.github/workflows/ci.yml`): core tests and clippy without WebKit, desktop build, static CLI, seven-distro matrix **(unverified: not yet run on GitHub)**
 
+## Store and updates
+- [x] Store view: Flathub popular apps with icons; search across Flathub, the Snap Store and the native repositories; Install opens the reviewed plan (`catalog.rs`, `plan::plan_repo`); `unpack search` / `unpack get`
+
 ## M7 — Extra features (ideas)
 - [ ] Update checks: AppImage zsync info, GitHub releases feed, `apt/dnf list --upgradable`
 - [ ] "Fix my install": missing libfuse2, no flatpak/snapd, missing exec bit

@@ -37,6 +37,7 @@ Unpack/
         trace.rs            filesystem snapshot diff for untracked installers
         store.rs            SQLite schema + queries
         library.rs          scan system package managers for installed software
+        catalog.rs          Store: Flathub popular/search (HTTPS API) plus native and snap search (local CLIs)
 ```
 
 ## Data flow
@@ -105,6 +106,8 @@ DB path: `$XDG_DATA_HOME/unpack/unpack.db` (default `~/.local/share/unpack/`). D
 |---|---|
 | `detect_system()` | Return `System` |
 | `analyze(input, allow_http)` | Parse, fetch/clone, sniff, build `Plan`, store it by id; emits `analyze-progress` while downloading |
+| `store_popular()` / `store_search(query)` | Store entries `{source, id, name, summary, icon}`: Flathub's API, plus `apt-cache search`, `dnf repoquery`, `zypper search`, `pacman -Ss`, `apk search`, `snap find` |
+| `store_plan(source, id)` | Build and keep a `Plan` for one entry (`plan::plan_repo`; the id is checked with `safe_ident`); run it with `execute` |
 | `cancel_analyze()` | Stop the running analyze: the call returns `Cancelled` at once, the worker stops at its next check and removes its work folder |
 | `execute(plan_id, as_root)` | Run the stored plan, emit `plan-log`, record app + event in SQLite |
 | `list_apps()` | Tracked apps from SQLite |
@@ -135,7 +138,7 @@ The same binary takes commands: `unpack install file.deb`, `unpack list`, `unpac
 
 ## UI
 
-Views: **Install** (drop zone + input; plan review; live log), **Library** (tracked and system-wide, search, uninstall), **System** (detected distro, managers, missing helpers with one-click bootstrap), **History** (events). VS Code style shell: our own draggable titlebar (native decorations off; minimize / maximize / close through the window API, allowed in `capabilities/default.json`), icon activity bar, tab strip with a 2px progress line, and a status bar with the distro and the running task. Tokens follow VS Code's Dark Modern / Light Modern with a green accent; they are CSS variables in `app/src/index.css` switched by `html[data-theme]` (OS preference by default, toggle saved in `localStorage`). Plain-language sans-serif text; monospace only for commands and the Output panel. Install progress is per step, derived from the runner's `== label ==` log markers. `lucide-react` icons.
+Views: **Install** (drop zone + input; plan review; live log; also reviews plans other views hand it), **Store** (Flathub's popular apps with icons, search across Flathub, the Snap Store and the distro's repositories, Install opens the plan in Install), **Library** (tracked and system-wide, search, uninstall), **System** (detected distro, managers, missing helpers with one-click bootstrap), **History** (events). VS Code style shell: our own draggable titlebar (native decorations off; minimize / maximize / close through the window API, allowed in `capabilities/default.json`), icon activity bar, tab strip with a 2px progress line, and a status bar with the distro and the running task. Tokens follow VS Code's Dark Modern / Light Modern with a green accent; they are CSS variables in `app/src/index.css` switched by `html[data-theme]` (OS preference by default, toggle saved in `localStorage`). Plain-language sans-serif text; monospace only for commands and the Output panel. Install progress is per step, derived from the runner's `== label ==` log markers. `lucide-react` icons.
 
 ## Testing
 

@@ -42,3 +42,9 @@ An advisory cited in research: PackageKit ≤ 1.1.13 let `InstallFiles`, `GetFil
 - Capabilities: only `core:default` plus our own commands and the event system. No `shell`, `fs`, `http` plugin exposed to the webview.
 - No `withGlobalTauri`.
 - Drag-and-drop paths come from Tauri's drag event, not from `<input type=file>` blob reads.
+
+## Store
+
+- The Store's lists come from Flathub's HTTPS API and local package tools. The page gets `{source, id}` pairs back and sends only those to `store_plan`; the backend rebuilds the command from a fixed template and refuses ids that fail `plan::safe_ident` (no leading `-`, only `A-Za-z0-9+._:@-`).
+- Icons are the only remote content the page loads. The CSP allows images from `https://dl.flathub.org` only, and `catalog.rs` drops any icon URL elsewhere.
+- Flathub installs go to the user installation (`flatpak --user`). Snap and native installs need the admin password.
