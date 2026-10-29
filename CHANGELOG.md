@@ -1,3 +1,37 @@
+## v0.0.1-alpha.4 (2026-10-29)
+
+- !alpha : Store pages and categories, update holds and rollback, background checks, dependency preview, signature checks, Void and Gentoo, single window
+- docs(readme): acknowledgements; Settings lists new crates and the services Unpack uses
+- docs(readme): store pages and sources, update holds and rollback, checks before install
+- feat(library): show the disk space each app takes
+- feat(install): warn when the app is already installed in another format
+- feat(install): preview the packages an install pulls in or removes
+- feat(install): check a file against a published SHA-256, signature or checksum list
+- docs(architecture): replaced_by column in the apps schema
+- feat(library): undo an update Unpack made
+- feat(updates): daily background check, notification, tray badge, opt-in auto-update
+- feat(updates): skip one version or never update an app
+- feat(store): manage Flatpak sources besides Flathub
+- feat(store): app pages, categories, and snaps and native apps on the front page
+- feat(gui): keep one window and hand a second Open with Unpack to it
+- feat(system): drive xbps on Void and emerge on Gentoo
+- feat(package): stage source builds into .rpm and Arch packages too
+- feat(updates): read plain zsync|<url> AppImage update info
+- feat(analyze): pair .orig.tar and .debian.tar files with their .dsc
+- feat(cli): remove packages the system reports, not only tracked apps
+- fix(ui): Install page header says Update or Fix for those plans
+- docs(readme): store, updates, open-with, fix, sandbox, containers, transfer, helper
+- feat(helper): polkit action and an allowlisted root helper for package-manager steps
+- feat(package): build source into a .deb from a DESTDIR stage so apt can remove it
+- feat(container): install packages for other distros inside a distrobox container
+- feat(distro): layer packages on read-only bases, NixOS AppImage launcher, glibc/musl loader warnings
+- feat(sandbox): try installer scripts in bubblewrap before running them
+- feat(transfer): export installed apps and install them again on another computer
+- feat(open-with): open package files in Unpack from the file manager or browser
+- feat(fix): repair tracked apps: missing runtime, exec bit, FUSE 2 and missing libraries
+- feat(updates): list upgradable packages and newer GitHub releases, update through a reviewed plan
+- feat(store): browse Flathub and search every package source, install through a reviewed plan
+
 ## v0.0.1-alpha.3 (2026-10-27)
 
 - !alpha : Command line build, cancel and download progress, leftover cleanup, distro tests, faster CI
