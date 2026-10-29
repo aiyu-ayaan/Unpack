@@ -40,11 +40,11 @@ export default function Install({ onInstalled, onTask, incoming, onTaken }: { on
   const [trial, setTrial] = useState<SandboxReport | "running" | string | null>(null);
   const planId = useRef<string | null>(null);
 
-  const analyze = useCallback(async (input: string) => {
+  const analyze = useCallback(async (input: string, asPackage = false) => {
     if (!input.trim()) return;
     setPhase("analyzing"); setError(null); setNotes([]); setPlan(null); setAsRoot(false); setShowPreview(false); setFetched(null); setTrial(null);
     try {
-      const p = await api.analyze(input.trim(), allowHttp);
+      const p = await api.analyze(input.trim(), allowHttp, asPackage);
       planId.current = p.id; setPlan(p); setPhase("review");
     } catch (e) { const m = errText(e); setError(m === "Cancelled" ? null : m); setPhase("idle"); }
   }, [allowHttp]);
@@ -216,6 +216,13 @@ export default function Install({ onInstalled, onTask, incoming, onTaken }: { on
                 </Banner>
               )}
             </div>
+          )}
+
+          {phase === "review" && plan.can_package && text.trim() && (
+            <Banner tone="info" icon={<Package className="h-4 w-4" />}>
+              <div>This builds from source into your home folder (~/.local). Unpack can instead make a system package of it, so your package manager knows its files and can remove it cleanly.</div>
+              <button className="btn mt-2" onClick={() => void analyze(text, true)}>Build a system package instead</button>
+            </Banner>
           )}
 
           {phase === "review" && plan.root_optional && (

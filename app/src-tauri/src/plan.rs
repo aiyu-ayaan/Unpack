@@ -17,6 +17,8 @@ pub enum Action {
     InstallBinary { src: PathBuf, name: String },
     /// Find a package produced by an earlier build step and install it natively.
     InstallBuilt { dirs: Vec<PathBuf>, ext: String },
+    /// Turn a `DESTDIR` staging folder into a `.deb` in `out`, so apt owns the installed files.
+    PackageDeb { stage: PathBuf, out: PathBuf, name: String, version: Option<String> },
     /// After installing a package inside a distrobox container: read its name there and export its menu entries.
     ContainerExport { container: String, manager: String, file: PathBuf },
 }
@@ -76,6 +78,8 @@ pub struct Plan {
     pub needs_root: bool,
     /// A single script step the user can try in a sandbox first (`sandbox::preview`).
     pub sandbox: bool,
+    /// Analyzing again with `as_package` builds a native package instead (source builds on apt systems).
+    pub can_package: bool,
     #[serde(skip)]
     pub uninstall: Uninstall,
     #[serde(skip)]
@@ -107,6 +111,7 @@ impl Plan {
             root_optional: false,
             needs_root: false,
             sandbox: false,
+            can_package: false,
             uninstall: Uninstall::Traced,
             trace: false,
             discover_flatpak: false,
@@ -123,6 +128,7 @@ impl Plan {
             Action::InstallPortable { name, .. } => format!("install {name} into ~/.local/opt"),
             Action::InstallBinary { name, .. } => format!("copy {name} to ~/.local/bin"),
             Action::InstallBuilt { ext, .. } => format!("install the built .{ext} package"),
+            Action::PackageDeb { name, .. } => format!("make a .deb package of {name} (dpkg-deb)"),
             Action::ContainerExport { container, .. } => format!("add its apps from {container} to the app menu"),
         };
         self.needs_root |= root;
@@ -149,19 +155,22 @@ pub enum Input {
     Dsc { path: PathBuf, work: PathBuf },
 }
 
+#[derive(Default)]
 pub struct Meta {
     pub source: String,
     pub sha256: Option<String>,
     pub pipe_to_shell: bool,
+    /// Build source into a native package (`.deb`) instead of installing into `~/.local`.
+    pub as_package: bool,
 }
 
 pub fn build(input: &Input, sys: &System, meta: &Meta) -> Plan {
     let mut plan = match input {
         Input::Package { path, kind } => plan_package(path, *kind, sys),
         Input::Archive { path, fmt, content, top, members, work } => {
-            plan_archive(path, *fmt, content, top, members, work, sys)
+            plan_archive(path, *fmt, content, top, members, work, sys, meta.as_package)
         }
-        Input::Repo { dir, content } => plan_content(content, dir, &file_stem(dir), sys),
+        Input::Repo { dir, content } => plan_content(content, dir, &file_stem(dir), sys, meta.as_package),
         Input::Dsc { path, work } => plan_dsc(path, work, sys),
     };
     plan.source = meta.source.clone();
@@ -173,10 +182,8 @@ pub fn build(input: &Input, sys: &System, meta: &Meta) -> Plan {
         );
     }
     read_only_base(&mut plan, sys);
-    if plan.supported {
-        if plan.needs_root && !sys.is_root && !has("pkexec") {
-            plan.warnings.push("Admin rights are needed but `pkexec` is missing. Install `polkit` or run the shown commands in a terminal.".into());
-        }
+    if plan.supported && plan.needs_root && !sys.is_root && !has("pkexec") {
+        plan.warnings.push("Admin rights are needed but `pkexec` is missing. Install `polkit` or run the shown commands in a terminal.".into());
     }
     plan.title = format!("Install {}", plan.name);
     plan
@@ -268,7 +275,7 @@ fn read_only_base(p: &mut Plan, sys: &System) {
     }
 }
 
-fn host_deb_arch() -> &'static str {
+pub fn host_deb_arch() -> &'static str {
     match std::env::consts::ARCH {
         "x86_64" => "amd64",
         "aarch64" => "arm64",
@@ -742,7 +749,8 @@ pub fn loader_warning(path: &Path, sys: &System) -> Option<String> {
 
 // ---------------------------------------------------------------- archives and source
 
-fn plan_archive(path: &Path, fmt: Archive, content: &Content, top: &str, members: &[String], work: &Path, sys: &System) -> Plan {
+#[allow(clippy::too_many_arguments)]
+fn plan_archive(path: &Path, fmt: Archive, content: &Content, top: &str, members: &[String], work: &Path, sys: &System, as_package: bool) -> Plan {
     let name = file_stem(path);
     let dest = work.join("x");
     let srcdir = if top.is_empty() { dest.clone() } else { dest.join(top) };
@@ -761,7 +769,7 @@ fn plan_archive(path: &Path, fmt: Archive, content: &Content, top: &str, members
             p
         }
         _ => {
-            let mut p = plan_content(content, &srcdir, &name, sys);
+            let mut p = plan_content(content, &srcdir, &name, sys, as_package);
             if p.supported {
                 p.steps.insert(0, extract_step(path, fmt, &dest));
             }
@@ -811,9 +819,18 @@ fn named_pkg(sys: &System, generic: &'static str) -> &'static str {
     }
 }
 
-pub fn plan_content(content: &Content, dir: &Path, name: &str, sys: &System) -> Plan {
+/// Source builds that honour `DESTDIR`, on a system that can turn the staged files into a `.deb`.
+fn can_stage(content: &Content, sys: &System) -> bool {
+    matches!(content, Content::Source(Build::Autotools | Build::CMake | Build::Meson | Build::Make)) && sys.native == Some(Native::Apt) && !sys.immutable && has("dpkg-deb")
+}
+
+pub fn plan_content(content: &Content, dir: &Path, name: &str, sys: &System, as_package: bool) -> Plan {
     let mut p = Plan::new("source", name, "");
-    let prefix = home().join(".local").to_string_lossy().to_string();
+    let staged = as_package && can_stage(content, sys);
+    p.can_package = !staged && can_stage(content, sys);
+    let prefix = if staged { "/usr/local".to_string() } else { home().join(".local").to_string_lossy().to_string() };
+    let stage = dir.join("unpack-stage").to_string_lossy().to_string();
+    let destdir = format!("DESTDIR={stage}");
     let d = Some(dir);
     let base = base_build_pkgs(sys);
     match content {
@@ -826,20 +843,32 @@ pub fn plan_content(content: &Content, dir: &Path, name: &str, sys: &System) -> 
                 }
                 p.cmd("Configure", false, "./configure", &[&format!("--prefix={prefix}")], d);
                 p.cmd("Compile", false, "make", &["-j4"], d);
-                p.cmd("Install to ~/.local", false, "make", &["install"], d);
+                if staged {
+                    p.cmd("Stage the files", false, "make", &["install", &destdir], d);
+                } else {
+                    p.cmd("Install to ~/.local", false, "make", &["install"], d);
+                }
             }
             Build::CMake => {
                 build_tools(sys, &mut p, &["make", "gcc"], &base);
                 build_tools(sys, &mut p, &["cmake"], &["cmake"]);
                 p.cmd("Configure", false, "cmake", &["-B", "build", &format!("-DCMAKE_INSTALL_PREFIX={prefix}"), "-DCMAKE_BUILD_TYPE=Release"], d);
                 p.cmd("Compile", false, "cmake", &["--build", "build", "-j4"], d);
-                p.cmd("Install to ~/.local", false, "cmake", &["--install", "build"], d);
+                if staged {
+                    p.cmd("Stage the files", false, "env", &[&destdir, "cmake", "--install", "build"], d);
+                } else {
+                    p.cmd("Install to ~/.local", false, "cmake", &["--install", "build"], d);
+                }
             }
             Build::Meson => {
                 build_tools(sys, &mut p, &["gcc"], &base);
                 build_tools(sys, &mut p, &["meson", "ninja"], &["meson", named_pkg(sys, "ninja")]);
                 p.cmd("Configure", false, "meson", &["setup", "build", &format!("--prefix={prefix}")], d);
-                p.cmd("Install to ~/.local", false, "ninja", &["-C", "build", "install"], d);
+                if staged {
+                    p.cmd("Stage the files", false, "env", &[&destdir, "ninja", "-C", "build", "install"], d);
+                } else {
+                    p.cmd("Install to ~/.local", false, "ninja", &["-C", "build", "install"], d);
+                }
             }
             Build::Cargo => {
                 build_tools(sys, &mut p, &["cargo"], &["cargo"]);
@@ -861,7 +890,11 @@ pub fn plan_content(content: &Content, dir: &Path, name: &str, sys: &System) -> 
             Build::Make => {
                 build_tools(sys, &mut p, &["make", "gcc"], &base);
                 p.cmd("Compile", false, "make", &["-j4"], d);
-                p.cmd("Install to ~/.local", false, "make", &["install", &format!("PREFIX={prefix}")], d);
+                if staged {
+                    p.cmd("Stage the files", false, "make", &["install", &format!("PREFIX={prefix}"), &destdir], d);
+                } else {
+                    p.cmd("Install to ~/.local", false, "make", &["install", &format!("PREFIX={prefix}")], d);
+                }
             }
             Build::Pkgbuild => {
                 if sys.native != Some(Native::Pacman) {
@@ -900,6 +933,15 @@ pub fn plan_content(content: &Content, dir: &Path, name: &str, sys: &System) -> 
             p.step("Install as portable app", false, Action::InstallPortable { from: dir.to_path_buf(), name: name.to_string() });
         }
         Content::Wrapper(_) | Content::Plain => p.refuse("No known way to install this.", &[]),
+    }
+    if staged && p.supported {
+        let out = dir.join("unpack-deb");
+        p.step("Make a package", false, Action::PackageDeb { stage: stage.into(), out: out.clone(), name: name.into(), version: None });
+        p.step("Install the package", true, Action::InstallBuilt { dirs: vec![out], ext: "deb".into() });
+        p.kind = "source → .deb".into();
+        p.trace = false;
+        p.uninstall = Uninstall::Manual { note: "set after install".into() };
+        return p;
     }
     if matches!(content, Content::Source(Build::Pkgbuild | Build::DebianDir)) {
         // native package manager owns removal; runner fills the real ident
@@ -962,6 +1004,22 @@ pub fn dsc_sums(text: &str) -> Vec<(String, String)> {
         }
     }
     out
+}
+
+/// A Debian package name for something built by Unpack: `unpack-` plus the lowercased name.
+pub fn deb_name(name: &str) -> String {
+    let n: String = name.to_lowercase().chars().map(|c| if c.is_ascii_alphanumeric() || "+.-".contains(c) { c } else { '-' }).collect();
+    format!("unpack-{}", n.trim_matches(['-', '.', '+']))
+}
+
+/// `DEBIAN/control` for a staged build.
+pub fn deb_control(name: &str, version: Option<&str>) -> String {
+    let v = version.filter(|v| v.starts_with(|c: char| c.is_ascii_digit()) && v.chars().all(|c| c.is_ascii_alphanumeric() || ".+~-".contains(c))).unwrap_or("0");
+    format!(
+        "Package: {}\nVersion: {v}~unpack1\nArchitecture: {}\nMaintainer: Unpack <unpack@localhost>\nSection: misc\nPriority: optional\nDescription: {name}, built from source by Unpack\n",
+        deb_name(name),
+        host_deb_arch()
+    )
 }
 
 /// A package or app id that is safe to hand to a package manager as one argument.
@@ -1161,6 +1219,23 @@ mod tests {
     }
 
     #[test]
+    fn staged_build_makes_a_deb() {
+        assert_eq!(deb_name("My Tool_2"), "unpack-my-tool-2");
+        let c = deb_control("Tool", Some("1.2"));
+        assert!(c.starts_with("Package: unpack-tool\nVersion: 1.2~unpack1\n") && c.contains("Architecture: "));
+        assert!(deb_control("x", Some("v1;rm")).contains("Version: 0~unpack1"));
+        let mut sys = fake(Some(Native::Apt));
+        let p = plan_content(&Content::Source(Build::CMake), Path::new("/w/src"), "tool", &sys, true);
+        if has("dpkg-deb") {
+            assert!(p.steps.iter().any(|s| s.display.contains("DESTDIR=/w/src/unpack-stage' cmake --install build")), "{:?}", p.steps);
+            assert!(matches!(p.steps.last().unwrap().action, Action::InstallBuilt { .. }) && !p.trace);
+            assert!(plan_content(&Content::Source(Build::CMake), Path::new("/w/src"), "tool", &sys, false).can_package);
+        }
+        sys.native = Some(Native::Dnf);
+        assert!(!plan_content(&Content::Source(Build::CMake), Path::new("/w/src"), "tool", &sys, true).steps.iter().any(|s| s.display.contains("DESTDIR")));
+    }
+
+    #[test]
     fn foreign_package_goes_into_a_container() {
         let mut p = Plan::new("Rpm", "tool", "");
         plan_container(&mut p, Kind::Rpm, Path::new("/home/u/Downloads/tool.rpm"), false);
@@ -1183,7 +1258,7 @@ mod tests {
     #[test]
     fn cargo_source_plan_uses_local_prefix() {
         let sys = fake(Some(Native::Apt));
-        let p = plan_content(&Content::Source(Build::Cargo), Path::new("/tmp/x"), "x", &sys);
+        let p = plan_content(&Content::Source(Build::Cargo), Path::new("/tmp/x"), "x", &sys, false);
         let has_prefix = p.steps.iter().any(|s| s.display.contains(".local"));
         assert!(has_prefix || !has("cargo"));
         assert!(p.trace);

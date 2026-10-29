@@ -124,7 +124,7 @@ mod tests {
         std::env::set_var("XDG_CACHE_HOME", d.path().join("cache"));
         let f = d.path().join("install.sh");
         std::fs::write(&f, "#!/bin/sh\necho hello\nmkdir -p \"$HOME/.local/bin\" && echo x > \"$HOME/.local/bin/tool\"\n").unwrap();
-        let plan = crate::plan::build(&crate::plan::Input::Package { path: f, kind: crate::sniff::Kind::Script }, &crate::system::detect(), &crate::plan::Meta { source: "t".into(), sha256: None, pipe_to_shell: false });
+        let plan = crate::plan::build(&crate::plan::Input::Package { path: f, kind: crate::sniff::Kind::Script }, &crate::system::detect(), &crate::plan::Meta { source: "t".into(), sha256: None, pipe_to_shell: false, as_package: false });
         assert!(script_step(&plan).is_some());
         // bwrap is missing, or user namespaces are blocked (AppArmor, containers): nothing to check here.
         let Ok(r) = preview(&plan) else { return };

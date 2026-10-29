@@ -5,7 +5,7 @@ export type Step = { label: string; display: string; needs_root: boolean };
 export type Plan = {
   id: string; title: string; kind: string; name: string; version: string | null;
   source: string; fetched: string | null; sha256: string | null; warnings: string[]; advice: string[];
-  steps: Step[]; supported: boolean; preview: string | null; sandbox: boolean;
+  steps: Step[]; supported: boolean; preview: string | null; sandbox: boolean; can_package: boolean;
   root_optional: boolean; needs_root: boolean;
 };
 export type SystemInfo = {
@@ -40,7 +40,8 @@ export type Entry = { source: string; id: string; name: string; summary: string;
 
 export const api = {
   system: () => invoke<SystemInfo>("detect_system"),
-  analyze: (input: string, allowHttp: boolean) => invoke<Plan>("analyze", { input, allowHttp }),
+  /** `asPackage`: build source into a native package (offered when a plan has `can_package`). */
+  analyze: (input: string, allowHttp: boolean, asPackage = false) => invoke<Plan>("analyze", { input, allowHttp, asPackage }),
   storePopular: () => invoke<Entry[]>("store_popular"),
   storeSearch: (query: string) => invoke<Entry[]>("store_search", { query }),
   /** A reviewable plan for a Store entry; the backend checks the id and keeps the plan. */

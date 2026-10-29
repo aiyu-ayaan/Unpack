@@ -33,6 +33,7 @@ Options:
       --root           Run the main step as administrator, when the plan allows it
       --allow-http     Accept a plain http:// link
       --sandbox        With check or install: first try a script in a sandbox (bubblewrap) and show what it did
+      --package        With check or install: build source into a system package (.deb) the package manager can remove
       --purge          With remove: also delete leftover settings, cache and data folders
       --all            With list: include removed apps
       --json           Machine-readable output
@@ -46,6 +47,7 @@ struct Opts {
     http: bool,
     purge: bool,
     sandbox: bool,
+    package: bool,
     all: bool,
     json: bool,
     args: Vec<String>,
@@ -60,6 +62,7 @@ fn parse(args: &[String]) -> Result<Opts, String> {
             "--allow-http" => o.http = true,
             "--purge" => o.purge = true,
             "--sandbox" => o.sandbox = true,
+            "--package" => o.package = true,
             "--all" => o.all = true,
             "--json" => o.json = true,
             s if s.starts_with('-') && s.len() > 1 => return Err(format!("unknown option {s}. See `unpack --help`.")),
@@ -249,7 +252,7 @@ fn progress(done: u64, total: Option<u64>) -> bool {
 }
 
 fn check(text: &str, o: &Opts) -> Result<Plan, String> {
-    let plan = analyze::analyze(text, &system::detect(), o.http, &progress);
+    let plan = analyze::analyze(text, &system::detect(), o.http, o.package, &progress);
     if std::io::stderr().is_terminal() {
         eprint!("\r\x1b[K");
     }

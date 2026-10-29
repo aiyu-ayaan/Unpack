@@ -48,7 +48,7 @@ async fn detect_system() -> Result<System, String> {
 /// Download progress arrives as `analyze-progress`. Cancel answers at once; the worker stops at its next
 /// check (download chunk, git clone poll, end) and removes its work folder.
 #[tauri::command]
-async fn analyze(input: String, allow_http: bool, app: AppHandle, state: Shared<'_>) -> Result<Plan, String> {
+async fn analyze(input: String, allow_http: bool, as_package: bool, app: AppHandle, state: Shared<'_>) -> Result<Plan, String> {
     let st = state.inner().clone();
     st.cancel.store(false, Ordering::SeqCst);
     let cancel = st.cancel.clone();
@@ -63,7 +63,7 @@ async fn analyze(input: String, allow_http: bool, app: AppHandle, state: Shared<
             }
             !cancel.load(Ordering::SeqCst)
         };
-        let _ = tx.send(analyze::analyze(&input, &system::detect(), allow_http, &progress));
+        let _ = tx.send(analyze::analyze(&input, &system::detect(), allow_http, as_package, &progress));
     });
     let cancel = st.cancel.clone();
     let plan = blocking(move || loop {
@@ -126,7 +126,7 @@ async fn update_app_plan(app_id: i64, app: AppHandle, state: Shared<'_>) -> Resu
             let _ = app.emit("analyze-progress", Fetched { done, total });
             true
         };
-        analyze::analyze(&url, &system::detect(), false, &progress)
+        analyze::analyze(&url, &system::detect(), false, false, &progress)
     })
     .await??;
     let mut plan = plan;

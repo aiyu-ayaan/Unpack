@@ -168,6 +168,9 @@ pub fn run(plan: &Plan, as_root: bool, sys: &System, emit: Emit) -> Result<Outco
             Action::IntegrateAppImage { src, name, no_sandbox, launcher } => created.extend(integrate_appimage(src, name, *no_sandbox, launcher.as_deref(), emit)?),
             Action::InstallPortable { from, name } => created.extend(install_portable(from, name, emit)?),
             Action::InstallBinary { src, name } => created.extend(install_binary(src, name, emit)?),
+            Action::PackageDeb { stage, out, name, version } => {
+                package_deb(stage, out, name, version.as_deref(), emit)?;
+            }
             Action::ContainerExport { container, manager, file } => {
                 let u = container_export(container, manager, file, emit)?;
                 nested = Some(Outcome { uninstall: u, notes: vec![] });
@@ -176,7 +179,7 @@ pub fn run(plan: &Plan, as_root: bool, sys: &System, emit: Emit) -> Result<Outco
                 let pkg = find_built(dirs, ext).ok_or_else(|| format!("The build finished but no .{ext} package was found"))?;
                 emit("info", &format!("Built package: {}", pkg.display()));
                 let kind = sniff(&pkg).map_err(|e| e.to_string())?;
-                let sub = crate::plan::build(&Input::Package { path: pkg, kind }, sys, &Meta { source: plan.source.clone(), sha256: None, pipe_to_shell: false });
+                let sub = crate::plan::build(&Input::Package { path: pkg, kind }, sys, &Meta { source: plan.source.clone(), ..Meta::default() });
                 if !sub.supported {
                     return Err(sub.warnings.join(" "));
                 }
@@ -414,6 +417,23 @@ fn install_binary(src: &Path, name: &str, emit: Emit) -> Result<Vec<String>, Str
     Ok(vec![dest.to_string_lossy().into()])
 }
 
+/// `dpkg-deb --build` over a `DESTDIR` staging folder, with a generated `DEBIAN/control`.
+fn package_deb(stage: &Path, out: &Path, name: &str, version: Option<&str>, emit: Emit) -> Result<(), String> {
+    let staged = walkdir::WalkDir::new(stage).into_iter().flatten().any(|e| !e.file_type().is_dir());
+    if !staged {
+        return Err("The build installed no files into the staging folder, so there is nothing to package.".into());
+    }
+    let control = stage.join("DEBIAN");
+    std::fs::create_dir_all(&control).map_err(|e| e.to_string())?;
+    std::fs::write(control.join("control"), crate::plan::deb_control(name, version)).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(out).map_err(|e| e.to_string())?;
+    let deb = out.join(format!("{}.deb", crate::plan::deb_name(name)));
+    let mut c = crate::util::command("dpkg-deb");
+    c.args(["--build", "--root-owner-group"]).arg(stage).arg(&deb);
+    emit("info", &format!("$ dpkg-deb --build --root-owner-group {} {}", stage.display(), deb.display()));
+    run_command(c, emit)
+}
+
 // ------------------------------------------------------------ distrobox containers
 
 fn inside(container: &str, args: &[&str]) -> Result<String, String> {
@@ -617,6 +637,22 @@ mod tests {
     }
 
     #[test]
+    fn packages_a_staged_build() {
+        if !has("dpkg-deb") {
+            return;
+        }
+        let d = tempfile::tempdir().unwrap();
+        let stage = d.path().join("stage");
+        assert!(package_deb(&stage, &d.path().join("out"), "Tool", Some("1.0"), &|_, _| {}).is_err(), "empty stage");
+        std::fs::create_dir_all(stage.join("usr/local/bin")).unwrap();
+        std::fs::write(stage.join("usr/local/bin/tool"), "#!/bin/sh\n").unwrap();
+        package_deb(&stage, &d.path().join("out"), "Tool", Some("1.0"), &|_, _| {}).unwrap();
+        let deb = d.path().join("out/unpack-tool.deb");
+        assert_eq!(capture("dpkg-deb", &["-f", &deb.to_string_lossy(), "Package", "Version"]).unwrap(), "Package: unpack-tool\nVersion: 1.0~unpack1\n");
+        assert!(capture("dpkg-deb", &["-c", &deb.to_string_lossy()]).unwrap().contains("./usr/local/bin/tool"));
+    }
+
+    #[test]
     fn runs_and_streams() {
         let lines = std::sync::Mutex::new(vec![]);
         let emit = |s: &str, l: &str| lines.lock().unwrap().push(format!("{s}:{l}"));
@@ -650,7 +686,7 @@ mod tests {
         std::env::set_var("XDG_DATA_HOME", h.path().join("share"));
         std::env::set_var("XDG_CACHE_HOME", h.path().join("cache"));
         let sys = crate::system::detect();
-        let plan = crate::plan::build(&Input::Package { path: script, kind: Kind::Script }, &sys, &Meta { source: "t".into(), sha256: None, pipe_to_shell: false });
+        let plan = crate::plan::build(&Input::Package { path: script, kind: Kind::Script }, &sys, &Meta { source: "t".into(), ..Meta::default() });
         let out = run(&plan, false, &sys, &|_, _| {}).unwrap();
         match &out.uninstall {
             Uninstall::Files { paths } => assert!(paths.iter().any(|p| p.ends_with(".local/bin/hello")), "{paths:?}"),

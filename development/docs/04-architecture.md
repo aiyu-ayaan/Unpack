@@ -111,7 +111,7 @@ DB path: `$XDG_DATA_HOME/unpack/unpack.db` (default `~/.local/share/unpack/`). D
 | Command | Purpose |
 |---|---|
 | `detect_system()` | Return `System` |
-| `analyze(input, allow_http)` | Parse, fetch/clone, sniff, build `Plan`, store it by id; emits `analyze-progress` while downloading |
+| `analyze(input, allow_http, as_package)` | Parse, fetch/clone, sniff, build `Plan`, store it by id; emits `analyze-progress` while downloading |
 | `store_popular()` / `store_search(query)` | Store entries `{source, id, name, summary, icon}`: Flathub's API, plus `apt-cache search`, `dnf repoquery`, `zypper search`, `pacman -Ss`, `apk search`, `snap find` |
 | `store_plan(source, id)` | Build and keep a `Plan` for one entry (`plan::plan_repo`; the id is checked with `safe_ident`); run it with `execute` |
 | `list_upgrades()` | Upgradable packages from apt/dnf/zypper/pacman/apk, Flatpak (user and system) and snap, plus tracked apps whose GitHub release has a newer file; Unpack's own records are marked with `app_id` |
@@ -146,6 +146,7 @@ The same binary takes commands: `unpack install file.deb`, `unpack list`, `unpac
 - Portable archives go to `~/.local/opt/<name>`, with a symlink in `~/.local/bin` and a `.desktop`.
 - Scripts, `.run`, `.bin` and source builds are *traced*: snapshot of `~/.local`, `/opt`, `/usr/local` before and after; new files become the `Files` uninstall spec. Limits: files written elsewhere (`/usr/bin`, `/etc`) are not seen; modified existing files are not seen. The runner then reports `Manual` when nothing new was found.
 - `Files` removal only touches `~/.local`, `~/Applications`, `~/Unpacked`, `/opt`, `/usr/local` (`runner::safe_to_remove`). Paths needing root go through one `pkexec rm -rf --`.
+- Staged packages: on apt systems with `dpkg-deb`, Autotools, CMake, Meson and plain Make sources set `can_package`. Analyzing again with `as_package` builds with prefix `/usr/local`, installs into `<src>/unpack-stage` with `DESTDIR`, writes `DEBIAN/control` (`unpack-<name>`, version `<v>~unpack1`, host architecture), runs `dpkg-deb --build --root-owner-group`, and installs the result like any `.deb`, so apt owns removal. `.rpm` and Arch packages from staged builds are not made yet.
 - Native package-recipe builds (`PKGBUILD`, `debian/`, `.dsc`) end in an `InstallBuilt` step: the produced package is planned and installed like a downloaded one, so the package manager owns removal.
 - A downloaded app's record keeps the link as given in `source` (updates read the GitHub project from it); when redirects led elsewhere the plan shows and the install event records the final address.
 - Updates of tracked apps: a `source` of `https://github.com/<owner>/<repo>/releases/download/<tag>/<file>` is compared with the project's latest release, and the replacement file is the one whose name is the old name with the new version, else the one with the same shape (digits ignored). AppImages that carry `gh-releases-zsync|owner|repo|tag|pattern` in their `.upd_info` ELF section are checked the same way. Plain `zsync|<url>` update info is not used yet.
