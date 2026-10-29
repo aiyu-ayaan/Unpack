@@ -416,6 +416,9 @@ fn show(p: &Plan) {
     for a in &p.advice {
         println!("advice:  {a}");
     }
+    if !p.pulls.is_empty() {
+        println!("Also installs {} other package{}: {}", p.pulls.len(), if p.pulls.len() > 1 { "s" } else { "" }, p.pulls.join(", "));
+    }
     if !p.steps.is_empty() {
         println!("Steps:");
         for (i, s) in p.steps.iter().enumerate() {

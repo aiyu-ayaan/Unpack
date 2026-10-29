@@ -42,6 +42,7 @@ export default function Install({ onInstalled, onTask, incoming, onTaken }: { on
   const [allowHttp, setAllowHttp] = useState(false);
   const [drag, setDrag] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [showPulls, setShowPulls] = useState(false);
   const [copied, setCopied] = useState(false);
   const [fetched, setFetched] = useState<Fetched | null>(null);
   const [trial, setTrial] = useState<SandboxReport | "running" | string | null>(null);
@@ -208,6 +209,15 @@ export default function Install({ onInstalled, onTask, incoming, onTaken }: { on
                 );
               })}
             </ol>
+          )}
+
+          {plan.pulls.length > 0 && (
+            <div>
+              <button className="flex cursor-pointer items-center gap-1 text-dim hover:text-ink" onClick={() => setShowPulls((v) => !v)} aria-expanded={showPulls}>
+                <ChevronRight className={`h-4 w-4 transition-transform duration-200 ${showPulls ? "rotate-90" : ""}`} aria-hidden /> Also installs {plan.pulls.length} other package{plan.pulls.length > 1 ? "s" : ""} it needs
+              </button>
+              {showPulls && <div className="enter mt-2 flex flex-wrap gap-1.5">{plan.pulls.map((n) => <span key={n} className="chip font-mono">{n}</span>)}</div>}
+            </div>
           )}
 
           {plan.preview && (

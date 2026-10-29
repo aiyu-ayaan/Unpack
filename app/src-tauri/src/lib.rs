@@ -3,6 +3,7 @@ pub mod archive;
 pub mod background;
 pub mod catalog;
 pub mod cli;
+pub mod deps;
 pub mod fetch;
 pub mod fix;
 pub mod helper;

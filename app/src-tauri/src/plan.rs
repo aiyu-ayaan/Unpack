@@ -81,6 +81,8 @@ pub struct Plan {
     pub sandbox: bool,
     /// Analyzing again with `as_package` builds a native package instead (source builds on apt, dnf, zypper, pacman).
     pub can_package: bool,
+    /// Other packages the package manager will install with it (`deps::preview`).
+    pub pulls: Vec<String>,
     #[serde(skip)]
     pub uninstall: Uninstall,
     #[serde(skip)]
@@ -113,6 +115,7 @@ impl Plan {
             needs_root: false,
             sandbox: false,
             can_package: false,
+            pulls: vec![],
             uninstall: Uninstall::Traced,
             trace: false,
             discover_flatpak: false,
@@ -1150,6 +1153,7 @@ pub fn plan_repo(source: &str, ident: &str, sys: &System) -> Plan {
         },
     }
     read_only_base(&mut p, sys);
+    crate::deps::preview(&mut p);
     p
 }
 

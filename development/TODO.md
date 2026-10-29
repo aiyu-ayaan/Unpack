@@ -136,6 +136,8 @@ Containers: `scripts/test-distros.sh` (CLI build, as root plus a normal user wit
 - [ ] Disk usage per app
 
 ## Safety and trust
+- [x] Dependency and conflict preview: simulated install lists the other packages it pulls in and warns about removals (apt, dnf, pacman, apk, xbps; zypper needs root to simulate)
+- [ ] Verify the dnf (`-C install --assumeno` as a user), apk and xbps previews **(unverified)**
 - [x] Checksum or signature: paste a SHA-256, or a `.sig`/`.asc`/`SHA256SUMS` link or path, before installing; a mismatch refuses the plan (Install review, `--verify`)
 
 ## Verification (items marked unverified in docs)

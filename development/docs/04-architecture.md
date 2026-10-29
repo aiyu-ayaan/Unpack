@@ -44,6 +44,8 @@ Unpack/
         transfer.rs         export the installed apps as JSON; on import, how each comes back (Store id, original link, or not)
         sandbox.rs          try a single script plan in bubblewrap: read-only `/`, no network, throwaway home; reports output and files
         helper.rs           `unpack helper <json>`: the root side of the polkit action; allowlisted package-manager commands, no shell
+        deps.rs             dependency preview: the plan's first root install simulated as the user (`apt-get -s`, `dnf -C install --assumeno`, `pacman --print`, `apk add --simulate`, `xbps-install -n`) into `Plan.pulls`, removals as a warning
+        verify.rs           check a file against a pasted SHA-256, a `SHA256SUMS` list or a detached signature (`gpg --status-fd`)
         catalog.rs          Store: Flathub popular/search (HTTPS API) plus native and snap search (local CLIs)
         background.rs       daily update check while closed: systemd user timer (else an autostart entry) running `unpack updates --notify`; opt-in auto-update of password-free updates; `notify-send`
 ```

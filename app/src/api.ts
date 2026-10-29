@@ -6,6 +6,8 @@ export type Plan = {
   id: string; title: string; kind: string; name: string; version: string | null;
   source: string; fetched: string | null; sha256: string | null; warnings: string[]; advice: string[];
   steps: Step[]; supported: boolean; preview: string | null; sandbox: boolean; can_package: boolean;
+  /** Other packages the package manager installs with it. */
+  pulls: string[];
   root_optional: boolean; needs_root: boolean;
 };
 export type SystemInfo = {

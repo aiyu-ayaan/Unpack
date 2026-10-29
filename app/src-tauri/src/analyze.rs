@@ -43,6 +43,7 @@ pub fn analyze(text: &str, sys: &System, allow_http: bool, as_package: bool, pro
     match r {
         Ok(mut plan) => {
             plan.id = id;
+            crate::deps::preview(&mut plan);
             Ok(plan)
         }
         Err(e) => {
