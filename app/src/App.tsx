@@ -91,7 +91,7 @@ export default function App() {
             <div key={view} className="enter">
               {view === "store" && <Store version={version} onReview={review} />}
               {view === "updates" && <Updates list={upgrades} err={upErr} reload={loadUpgrades} onReview={review} />}
-              {view === "library" && <Library version={version} onTask={setTask} />}
+              {view === "library" && <Library version={version} onTask={setTask} onReview={review} />}
               {view === "system" && <System s={sys} err={sysErr} />}
               {view === "history" && <History version={version} />}
               {view === "settings" && <Settings u={update} />}

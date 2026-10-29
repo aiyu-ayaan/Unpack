@@ -45,6 +45,8 @@ export const api = {
   upgradePlan: (picks: { manager: string; name: string; user: boolean }[]) => invoke<Plan>("upgrade_plan", { picks }),
   /** Analyzes the newer release file of tracked app `appId`; installing it replaces the old one. */
   updateAppPlan: (appId: number) => invoke<Plan>("update_app_plan", { appId }),
+  /** Repair plan for a tracked app; unsupported with advice when nothing is wrong. */
+  fixPlan: (appId: number) => invoke<Plan>("fix_plan", { appId }),
   cancelAnalyze: () => invoke<void>("cancel_analyze"),
   onAnalyzeProgress: (fn: (p: Fetched) => void) => listen<Fetched>("analyze-progress", (e) => fn(e.payload)),
   execute: (planId: string, asRoot: boolean) => invoke<RunResult>("execute", { planId, asRoot }),

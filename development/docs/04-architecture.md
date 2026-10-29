@@ -38,6 +38,8 @@ Unpack/
         store.rs            SQLite schema + queries
         library.rs          scan system package managers for installed software
         upgrades.rs         what can be updated (each manager's upgradable list, newer GitHub releases of tracked apps, AppImage `.upd_info`) and the update plan
+        fix.rs              "Fix my install": missing runtime (Flatpak, snapd, FUSE 2), lost exec bit, missing shared libraries
+        libcheck.rs         `ldd` over a native package's files; which package provides a missing library, per manager
         catalog.rs          Store: Flathub popular/search (HTTPS API) plus native and snap search (local CLIs)
 ```
 
@@ -112,6 +114,7 @@ DB path: `$XDG_DATA_HOME/unpack/unpack.db` (default `~/.local/share/unpack/`). D
 | `list_upgrades()` | Upgradable packages from apt/dnf/zypper/pacman/apk, Flatpak (user and system) and snap, plus tracked apps whose GitHub release has a newer file; Unpack's own records are marked with `app_id` |
 | `upgrade_plan(picks)` | One `Plan` (kind `update`, records nothing) for picked `{manager, name, user}`; names checked with `safe_ident`, apt refreshes its lists first, Arch always does a full `-Syu` |
 | `update_app_plan(app_id)` | Analyze the newer release file of a tracked app; on success the new record replaces the old one (old files removed, old row `updated`) |
+| `fix_plan(app_id)` | Repair plan for a tracked app (kind `fix`, records nothing); unsupported with advice when nothing is wrong |
 | `cancel_analyze()` | Stop the running analyze: the call returns `Cancelled` at once, the worker stops at its next check and removes its work folder |
 | `execute(plan_id, as_root)` | Run the stored plan, emit `plan-log`, record app + event in SQLite |
 | `list_apps()` | Tracked apps from SQLite |
@@ -144,7 +147,7 @@ The same binary takes commands: `unpack install file.deb`, `unpack list`, `unpac
 
 ## UI
 
-Views: **Install** (drop zone + input; plan review; live log; also reviews plans other views hand it), **Updates** (count badge in the activity bar; apps installed with Unpack first, then the rest; Update all builds one plan), **Store** (Flathub's popular apps with icons, search across Flathub, the Snap Store and the distro's repositories, Install opens the plan in Install), **Library** (tracked and system-wide, search, uninstall), **System** (detected distro, managers, missing helpers with one-click bootstrap), **History** (events). VS Code style shell: our own draggable titlebar (native decorations off; minimize / maximize / close through the window API, allowed in `capabilities/default.json`), icon activity bar, tab strip with a 2px progress line, and a status bar with the distro and the running task. Tokens follow VS Code's Dark Modern / Light Modern with a green accent; they are CSS variables in `app/src/index.css` switched by `html[data-theme]` (OS preference by default, toggle saved in `localStorage`). Plain-language sans-serif text; monospace only for commands and the Output panel. Install progress is per step, derived from the runner's `== label ==` log markers. `lucide-react` icons.
+Views: **Install** (drop zone + input; plan review; live log; also reviews plans other views hand it), **Updates** (count badge in the activity bar; apps installed with Unpack first, then the rest; Update all builds one plan), **Store** (Flathub's popular apps with icons, search across Flathub, the Snap Store and the distro's repositories, Install opens the plan in Install), **Library** (tracked and system-wide, search, Fix, uninstall), **System** (detected distro, managers, missing helpers with one-click bootstrap), **History** (events). VS Code style shell: our own draggable titlebar (native decorations off; minimize / maximize / close through the window API, allowed in `capabilities/default.json`), icon activity bar, tab strip with a 2px progress line, and a status bar with the distro and the running task. Tokens follow VS Code's Dark Modern / Light Modern with a green accent; they are CSS variables in `app/src/index.css` switched by `html[data-theme]` (OS preference by default, toggle saved in `localStorage`). Plain-language sans-serif text; monospace only for commands and the Output panel. Install progress is per step, derived from the runner's `== label ==` log markers. `lucide-react` icons.
 
 ## Testing
 

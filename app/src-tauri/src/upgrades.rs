@@ -92,7 +92,7 @@ pub fn parse_pacman(out: &str) -> Vec<Upgrade> {
 }
 
 /// `name-1.2-r0` → (`name`, `1.2-r0`).
-fn apk_split(nv: &str) -> Option<(&str, &str)> {
+pub(crate) fn apk_split(nv: &str) -> Option<(&str, &str)> {
     let mut i = nv.rmatch_indices('-');
     let (_, _) = i.next()?;
     let (at, _) = i.next()?;

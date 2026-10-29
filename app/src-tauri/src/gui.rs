@@ -2,7 +2,7 @@
 use crate::plan::{Plan, Uninstall};
 use crate::store::{App, Event, Store};
 use crate::system::{self, System};
-use crate::{analyze, catalog, fetch, library, ops, plan, runner, updates, upgrades, util};
+use crate::{analyze, catalog, fetch, fix, library, ops, plan, runner, updates, upgrades, util};
 use ops::RunResult;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -132,6 +132,14 @@ async fn update_app_plan(app_id: i64, app: AppHandle, state: Shared<'_>) -> Resu
     plan.title = format!("Update {}", plan.name);
     state.plans.lock().map_err(|e| e.to_string())?.insert(plan.id.clone(), plan.clone());
     Ok(plan)
+}
+
+/// What keeps a tracked app from starting, as a plan to review (unsupported with advice when nothing is wrong).
+#[tauri::command]
+async fn fix_plan(app_id: i64, state: Shared<'_>) -> Result<Plan, String> {
+    let rec = state.store.lock().map_err(|e| e.to_string())?.get(app_id)?;
+    let p = blocking(move || fix::plan(&rec, &system::detect())).await?;
+    keep(&state, p)
 }
 
 #[tauri::command]
@@ -302,7 +310,7 @@ pub fn run() {
             std::thread::spawn(analyze::clean_old_work);
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![detect_system, analyze, cancel_analyze, store_popular, store_search, store_plan, list_upgrades, upgrade_plan, update_app_plan, execute, list_apps, history, scan_system, uninstall_app, leftovers, remove_leftovers, uninstall_system, update_info, update_check, update_install, update_set_channel, update_skip, open_link])
+        .invoke_handler(tauri::generate_handler![detect_system, analyze, cancel_analyze, store_popular, store_search, store_plan, list_upgrades, upgrade_plan, update_app_plan, fix_plan, execute, list_apps, history, scan_system, uninstall_app, leftovers, remove_leftovers, uninstall_system, update_info, update_check, update_install, update_set_channel, update_skip, open_link])
         .run(tauri::generate_context!())
         .expect("error while running Unpack");
 }

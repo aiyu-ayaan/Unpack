@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { FolderX, RefreshCw, Search, Trash2, XCircle } from "lucide-react";
+import { FolderX, Loader2, RefreshCw, Search, Trash2, Wrench, XCircle } from "lucide-react";
 import { api, errText, when, type App, type LogLine, type SysPkg } from "../api";
-import type { Task } from "../App";
+import type { Incoming, Task } from "../App";
 import { Log } from "../components/Log";
 import { Banner, Empty, PageHeader, Progress } from "../components/ui";
 
 type Tab = "tracked" | "system";
 
-export default function Library({ version, onTask }: { version: number; onTask: (t: Task) => void }) {
+export default function Library({ version, onTask, onReview }: { version: number; onTask: (t: Task) => void; onReview: (i: Incoming) => void }) {
   const [tab, setTab] = useState<Tab>("tracked");
   const [apps, setApps] = useState<App[]>([]);
   const [sys, setSys] = useState<SysPkg[] | null>(null);
@@ -53,6 +53,12 @@ export default function Library({ version, onTask }: { version: number; onTask: 
     setBusy(null); onTask(null);
   };
 
+  const fix = async (a: App) => {
+    setBusy(`fix${a.id}`); setMsg(null);
+    try { onReview({ plan: await api.fixPlan(a.id) }); } catch (e) { setMsg(errText(e)); }
+    setBusy(null);
+  };
+
   const ql = q.toLowerCase();
   const tracked = useMemo(() => apps.filter((a) => a.status === "installed" && a.name.toLowerCase().includes(ql)), [apps, ql]);
   const system = useMemo(() => (sys ?? []).filter((p) => p.name.toLowerCase().includes(ql)), [sys, ql]);
@@ -88,14 +94,17 @@ export default function Library({ version, onTask }: { version: number; onTask: 
           </div>
         </Banner>
       )}
-      {busy && <><Progress value={null} label="Removing" /><Log lines={log} running /></>}
+      {busy && !busy.startsWith("fix") && <><Progress value={null} label="Removing" /><Log lines={log} running /></>}
 
       <div className="card divide-y divide-line overflow-hidden">
         {tab === "tracked" && <div className="stagger divide-y divide-line">{tracked.map((a) => (
           <Row key={a.id} title={a.name} sub={`${a.version ?? ""} ${a.kind} · ${when(a.installed_at)}`.trim()} status={a.status}
             how={a.uninstall.type === "manager" ? `via ${a.uninstall.manager}` : a.uninstall.type === "files" ? `${a.uninstall.paths.length} files tracked` : a.uninstall.type === "manual" ? "remove manually" : ""}
-            action={a.status === "installed" && a.uninstall.type !== "manual" && (
-              <Remove id={`a${a.id}`} busy={busy} confirm={confirm} setConfirm={setConfirm} run={() => remove(`a${a.id}`, a.name, () => api.uninstall(a.id), true)} />)} />
+            action={a.status === "installed" && <span className="flex gap-1">
+              <button className="btn btn-ghost" disabled={busy !== null} onClick={() => void fix(a)} title="Find and repair what keeps it from starting">
+                {busy === `fix${a.id}` ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Wrench className="h-4 w-4" aria-hidden />} Fix</button>
+              {a.uninstall.type !== "manual" && <Remove id={`a${a.id}`} busy={busy} confirm={confirm} setConfirm={setConfirm} run={() => remove(`a${a.id}`, a.name, () => api.uninstall(a.id), true)} />}
+            </span>} />
         ))}</div>}
         {tab === "tracked" && tracked.length === 0 && <Empty>Nothing here yet. Install something and it will show up.</Empty>}
         {tab === "system" && sys === null && <div className="flex flex-col gap-3 px-5 py-8"><Progress value={null} label="Scanning packages" /><div className="text-center text-dim">Looking for installed packages…</div></div>}

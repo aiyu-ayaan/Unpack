@@ -3,6 +3,7 @@ pub mod archive;
 pub mod catalog;
 pub mod cli;
 pub mod fetch;
+pub mod fix;
 pub mod input;
 pub mod libcheck;
 pub mod library;

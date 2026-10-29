@@ -1,7 +1,7 @@
 //! `unpack <command>`: the window's analyze → plan → install flow in a terminal, on the same database.
 use crate::plan::{Plan, Uninstall};
 use crate::store::{App, Store};
-use crate::{analyze, catalog, library, ops, plan as plans, runner, system, updates, upgrades, util};
+use crate::{analyze, catalog, fix, library, ops, plan as plans, runner, system, updates, upgrades, util};
 use std::io::{IsTerminal, Write};
 use std::sync::Mutex;
 
@@ -20,6 +20,7 @@ Commands:
   updates              What can be updated: system packages, Flatpaks, snaps, and apps from GitHub releases
   upgrade [name...]    Update those packages (all of them with no names)
   remove <id|name>     Uninstall a tracked app (--purge: also its settings and cache folders)
+  fix <id|name>        Find what keeps an app from starting and repair it
   scan                 Every package the system's package managers report
   history [id|name]    What Unpack did, newest first
   system               What Unpack detected about this computer
@@ -170,6 +171,14 @@ fn run(args: &[String]) -> Result<i32, String> {
             }
         }
         "upgrade" => return upgrade(&o),
+        "fix" => {
+            let key = o.args.first().ok_or("fix needs an app id or name. See `unpack list`.")?;
+            let app = find(&store()?.into_inner().map_err(|e| e.to_string())?, key, false)?;
+            let mut plan = fix::plan(&app, &system::detect());
+            plan.id = analyze::new_id();
+            if o.json { json(&plan)?; } else { show(&plan); }
+            return run_plan(plan, &o);
+        }
         "scan" => {
             let pkgs = library::scan();
             if o.json {

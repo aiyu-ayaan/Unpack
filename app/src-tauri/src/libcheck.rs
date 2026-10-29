@@ -57,16 +57,38 @@ fn apt_package(soname: &str) -> Option<String> {
     capture("apt-cache", &["show", "--no-all-versions", &pkg]).ok().map(|_| pkg)
 }
 
+/// rpm's name for a library on this CPU: `libfoo.so.1()(64bit)`.
+fn rpm_cap(soname: &str) -> String {
+    if cfg!(target_pointer_width = "64") { format!("{soname}()(64bit)") } else { format!("{soname}()") }
+}
+
+/// The package in `manager`'s repositories that provides `soname`, when the manager can say.
+pub fn provider(manager: &str, soname: &str) -> Option<String> {
+    let first = |out: String| out.lines().map(str::trim).find(|l| !l.is_empty()).map(String::from);
+    let found = match manager {
+        "apt" => apt_package(soname),
+        "dnf" | "yum" => capture(if crate::util::has("dnf") { "dnf" } else { "yum" }, &["repoquery", "-q", "--latest-limit=1", "--qf", "%{name}\n", "--whatprovides", &rpm_cap(soname)]).ok().and_then(first),
+        "zypper" => capture("zypper", &["--non-interactive", "--no-refresh", "search", "--provides", "--match-exact", &rpm_cap(soname)]).ok().and_then(|o| crate::catalog::parse_zypper(&o).into_iter().next()).map(|e| e.id),
+        // Needs the file database (`pacman -Fy`); without it nothing is found.
+        "pacman" => capture("pacman", &["-Fq", soname]).ok().and_then(first).map(|l| l.rsplit('/').next().unwrap_or(&l).to_string()),
+        "apk" => capture("apk", &["search", &format!("so:{soname}")]).ok().and_then(first).and_then(|l| crate::upgrades::apk_split(&l).map(|x| x.0.to_string())),
+        _ => None,
+    };
+    found.filter(|p| crate::plan::safe_ident(p))
+}
+
 /// Check a fresh native install. Logs each problem and returns one note for the result, or none.
 pub fn report(manager: &str, ident: &str, emit: &dyn Fn(&str, &str)) -> Option<String> {
     let miss = missing(manager, ident);
     if miss.is_empty() {
         return None;
     }
-    let fixes: Vec<String> = if manager == "apt" { miss.iter().filter_map(|m| apt_package(m)).collect() } else { vec![] };
+    let mut fixes: Vec<String> = miss.iter().filter_map(|m| provider(manager, m)).collect();
+    fixes.sort();
+    fixes.dedup();
     let mut note = format!("{ident} is installed but may not start: these libraries are missing: {}.", miss.join(", "));
     if !fixes.is_empty() {
-        note.push_str(&format!(" Try: sudo apt install {}", fixes.join(" ")));
+        note.push_str(&format!(" Library > Fix can install {}.", fixes.join(" ")));
     }
     emit("warn", &note);
     Some(note)
