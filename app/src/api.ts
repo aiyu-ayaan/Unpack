@@ -27,6 +27,7 @@ export type SysPkg = { name: string; version: string; manager: string };
 export type Event = { ts: number; level: string; message: string };
 export type RunResult = { ok: boolean; app_id: number | null; error: string | null; notes: string[] };
 export type Channel = "alpha" | "beta" | "stable";
+export type Background = { enabled: boolean; auto_update: boolean };
 export type UpdateInfo = { version: string; channel: Channel; self_install: boolean; skipped: string | null };
 export type Offer = { version: string; url: string; notes: string | null };
 export type Link = "repo" | "issues" | "developer" | "site";
@@ -90,6 +91,11 @@ export const api = {
   removeLeftovers: (appId: number) => invoke<string[]>("remove_leftovers", { appId }),
   uninstallSystem: (manager: string, ident: string) =>
     invoke<RunResult>("uninstall_system", { manager, ident }),
+  backgroundInfo: () => invoke<Background>("background_info"),
+  /** Daily check while Unpack is closed; `autoUpdate` also installs updates that need no password. */
+  setBackground: (on: boolean, autoUpdate: boolean) => invoke<void>("set_background", { on, autoUpdate }),
+  /** Waiting updates, shown on the tray icon. */
+  setBadge: (count: number) => invoke<void>("set_badge", { count }),
   updateInfo: () => invoke<UpdateInfo>("update_info"),
   updateCheck: () => invoke<Offer | null>("update_check"),
   /** Resolves with where a package was saved, or null when the app restarts into the new version. */

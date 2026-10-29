@@ -45,6 +45,7 @@ Unpack/
         sandbox.rs          try a single script plan in bubblewrap: read-only `/`, no network, throwaway home; reports output and files
         helper.rs           `unpack helper <json>`: the root side of the polkit action; allowlisted package-manager commands, no shell
         catalog.rs          Store: Flathub popular/search (HTTPS API) plus native and snap search (local CLIs)
+        background.rs       daily update check while closed: systemd user timer (else an autostart entry) running `unpack updates --notify`; opt-in auto-update of password-free updates; `notify-send`
 ```
 
 ## Data flow
@@ -119,6 +120,7 @@ DB path: `$XDG_DATA_HOME/unpack/unpack.db` (default `~/.local/share/unpack/`). D
 | `store_plan(source, id)` | Build and keep a `Plan` for one entry (`plan::plan_repo`; the id is checked with `safe_ident`); run it with `execute` |
 | `list_upgrades()` | Upgradable packages from apt/dnf/zypper/pacman/apk, Flatpak (user and system) and snap, plus tracked apps whose GitHub release has a newer file; Unpack's own records are marked with `app_id` |
 | `hold_update(manager, name, version?)` / `unhold_update(manager, name)` | Turn down an update: `manager:name` (never) or `manager:name@version` (that version) in `settings.json` `held`; `list_upgrades` marks those `held`, Update all and `unpack upgrade` leave them out. CLI: `unpack hold <name> [--skip]`, `unpack unhold <name>` |
+| `background_info()` / `set_background(on, auto_update)` / `set_badge(count)` | Background check: `~/.config/systemd/user/unpack-updates.{service,timer}` (`OnCalendar=daily`, `Persistent=true`), or `~/.config/autostart/unpack-updates.desktop` without a systemd user session; `unpack-dev-updates` for the dev flavor. It runs `unpack updates --notify`: held updates are left out, with `auto_update` user Flatpaks and release downloads whose plan needs no root and has no warning are installed first, then one `notify-send` names what was updated and what waits. The window shows the waiting count on a tray icon (tooltip and appindicator label) when libappindicator is present; menu: Open, Quit. CLI: `unpack background on|off [--auto]` **(unverified: timer, notification and tray on GNOME/KDE)** |
 | `upgrade_plan(picks)` | One `Plan` (kind `update`, records nothing) for picked `{manager, name, user}`; names checked with `safe_ident`, apt refreshes its lists first, Arch always does a full `-Syu` |
 | `update_app_plan(app_id)` | Analyze the newer release file of a tracked app; on success the new record replaces the old one (old files removed, old row `updated`) |
 | `fix_plan(app_id)` | Repair plan for a tracked app (kind `fix`, records nothing); unsupported with advice when nothing is wrong |

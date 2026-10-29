@@ -107,6 +107,9 @@ pub struct Settings {
     /// Updates the user turned down: `manager:name` (never) or `manager:name@version` (not that version).
     #[serde(default)]
     pub held: Vec<String>,
+    /// The background check installs updates that need no admin password (see `background`).
+    #[serde(default)]
+    pub auto_update: bool,
 }
 
 fn settings_path() -> PathBuf {

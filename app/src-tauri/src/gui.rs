@@ -2,7 +2,7 @@
 use crate::plan::Plan;
 use crate::store::{App, Event, Store};
 use crate::system::{self, System};
-use crate::{analyze, catalog, fetch, fix, library, mime, ops, plan, sandbox, transfer, updates, upgrades, util};
+use crate::{analyze, background, catalog, fetch, fix, library, mime, ops, plan, sandbox, transfer, updates, upgrades, util};
 use ops::RunResult;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -303,6 +303,65 @@ async fn uninstall_system(manager: String, ident: String, app: AppHandle) -> Res
 }
 
 #[derive(Serialize)]
+struct Background {
+    enabled: bool,
+    auto_update: bool,
+}
+
+#[tauri::command]
+fn background_info() -> Background {
+    Background { enabled: background::enabled(), auto_update: updates::load().auto_update }
+}
+
+/// Daily update check while the window is closed; `auto_update` also installs the ones needing no password.
+#[tauri::command]
+async fn set_background(on: bool, auto_update: bool) -> Result<(), String> {
+    blocking(move || {
+        background::set(on)?;
+        let mut s = updates::load();
+        s.auto_update = on && auto_update;
+        updates::save(&s)
+    })
+    .await?
+}
+
+/// The number of waiting updates on the tray icon.
+#[tauri::command]
+fn set_badge(count: usize, app: AppHandle) {
+    if let Some(t) = app.tray_by_id("main") {
+        let tip = if count == 0 { "Unpack".to_string() } else { format!("Unpack: {count} update{} available", if count > 1 { "s" } else { "" }) };
+        let _ = t.set_tooltip(Some(tip));
+        let _ = t.set_title((count > 0).then(|| count.to_string()));
+    }
+}
+
+/// The tray icon needs libappindicator at run time; without it, building one would abort the app.
+fn tray_available() -> bool {
+    let bundled = std::env::var_os("APPDIR").is_some_and(|d| std::path::Path::new(&d).join("usr/lib/libayatana-appindicator3.so.1").exists());
+    bundled || util::capture("ldconfig", &["-p"]).is_ok_and(|o| o.contains("libayatana-appindicator3.so.1") || o.contains("libappindicator3.so.1"))
+}
+
+fn tray(app: &tauri::App) -> tauri::Result<()> {
+    use tauri::menu::{Menu, MenuItem};
+    let open = MenuItem::with_id(app, "open", "Open Unpack", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+    let mut t = tauri::tray::TrayIconBuilder::with_id("main").tooltip("Unpack").menu(&Menu::with_items(app, &[&open, &quit])?).on_menu_event(|app, e| match e.id.as_ref() {
+        "open" => {
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = (w.unminimize(), w.show(), w.set_focus());
+            }
+        }
+        "quit" => app.exit(0),
+        _ => {}
+    });
+    if let Some(i) = app.default_window_icon() {
+        t = t.icon(i.clone());
+    }
+    t.build(app)?;
+    Ok(())
+}
+
+#[derive(Serialize)]
 struct UpdateInfo {
     version: &'static str,
     channel: updates::Channel,
@@ -398,9 +457,14 @@ pub fn run(open: Option<String>) {
             let store = Store::open(&util::data_dir().join("unpack.db"))?;
             app.manage(Arc::new(AppState { plans: Mutex::new(HashMap::new()), store: Mutex::new(store), offer: Mutex::new(None), cancel: Arc::new(AtomicBool::new(false)), opened: Mutex::new(open) }));
             std::thread::spawn(analyze::clean_old_work);
+            if tray_available() {
+                if let Err(e) = tray(app) {
+                    eprintln!("no tray icon: {e}");
+                }
+            }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![detect_system, analyze, cancel_analyze, flatpak_remotes, remote_remove_plan, store_popular, store_category, store_detail, store_search, store_plan, list_upgrades, hold_update, unhold_update, upgrade_plan, update_app_plan, fix_plan, take_opened, file_handler, set_file_handler, export_apps, import_apps, sandbox_preview, execute, list_apps, history, scan_system, uninstall_app, leftovers, remove_leftovers, uninstall_system, update_info, update_check, update_install, update_set_channel, update_skip, open_link])
+        .invoke_handler(tauri::generate_handler![detect_system, analyze, cancel_analyze, flatpak_remotes, remote_remove_plan, store_popular, store_category, store_detail, store_search, store_plan, list_upgrades, hold_update, unhold_update, upgrade_plan, update_app_plan, fix_plan, take_opened, file_handler, set_file_handler, export_apps, import_apps, sandbox_preview, execute, list_apps, history, scan_system, uninstall_app, leftovers, remove_leftovers, uninstall_system, background_info, set_background, set_badge, update_info, update_check, update_install, update_set_channel, update_skip, open_link])
         .run(tauri::generate_context!())
         .expect("error while running Unpack");
 }

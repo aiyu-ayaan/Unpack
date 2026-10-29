@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { ExternalLink, Code2, UserRound, Globe, Bug, RefreshCw, XCircle, CheckCircle2, Download } from "lucide-react";
-import { api, errText, type Channel, type Imported, type Link, type Remote } from "../api";
+import { api, errText, type Background, type Channel, type Imported, type Link, type Remote } from "../api";
 import type { Incoming } from "../App";
 import { plainNotes, type Update } from "../update";
 import { Banner, PageHeader, Progress } from "../components/ui";
@@ -51,6 +51,30 @@ function FileHandler() {
         <button role="switch" aria-checked={!!on} disabled={on === null} onClick={() => void toggle()} className={`btn ${on ? "btn-primary" : ""}`}>{on ? "On" : "Off"}</button>
       </div>
       {err && <div className="border-t border-line p-4"><Banner tone="bad" icon={<XCircle className="h-4 w-4" />}>{err}</Banner></div>}
+    </>
+  );
+}
+
+function BackgroundCheck() {
+  const [b, setB] = useState<Background | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => { api.backgroundInfo().then(setB).catch(() => setB({ enabled: false, auto_update: false })); }, []);
+  const change = async (on: boolean, auto: boolean) => {
+    setErr(null);
+    try { await api.setBackground(on, auto); } catch (e) { setErr(errText(e)); }
+    setB(await api.backgroundInfo().catch(() => null));
+  };
+  return (
+    <>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
+        <div><p className="text-strong">Check for app updates every day</p><p className="text-xs text-dim">Also while Unpack is closed. You get a notification when something can be updated.</p></div>
+        <button role="switch" aria-checked={!!b?.enabled} disabled={!b} onClick={() => b && void change(!b.enabled, b.auto_update)} className={`btn ${b?.enabled ? "btn-primary" : ""}`}>{b?.enabled ? "On" : "Off"}</button>
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
+        <div><p className="text-strong">Install updates on their own</p><p className="text-xs text-dim">Only updates that need no admin password and come with no warning: your Flatpaks and apps in your home folder. The rest still wait for you.</p></div>
+        <button role="switch" aria-checked={!!b?.auto_update} disabled={!b?.enabled} onClick={() => b && void change(true, !b.auto_update)} className={`btn ${b?.auto_update ? "btn-primary" : ""}`}>{b?.auto_update ? "On" : "Off"}</button>
+      </div>
+      {err && <div className="border-b border-line p-4"><Banner tone="bad" icon={<XCircle className="h-4 w-4" />}>{err}</Banner></div>}
     </>
   );
 }
@@ -158,6 +182,8 @@ export default function Settings({ u, onReview }: { u: Update; onReview: (i: Inc
         )}
         {info && !info.self_install && <p className="border-t border-line px-4 py-3 text-xs text-dim">Installed from a package: updates download the new package and open it in your software installer. Development builds never offer updates.</p>}
       </Card>
+
+      <Card title="App updates"><BackgroundCheck /><p className="px-4 py-3 text-xs text-dim">Skipped and held updates are never installed or announced. Change them in Updates.</p></Card>
 
       <Card title="Files"><FileHandler /></Card>
 

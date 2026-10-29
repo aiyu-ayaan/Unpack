@@ -1,5 +1,6 @@
 pub mod analyze;
 pub mod archive;
+pub mod background;
 pub mod catalog;
 pub mod cli;
 pub mod fetch;

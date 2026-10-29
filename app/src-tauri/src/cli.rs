@@ -20,6 +20,9 @@ Commands:
   get <source> <id>    Install one search result (source: flathub, snap, apt, dnf, zypper, pacman, apk, xbps, emerge)
   list                 Apps installed with Unpack (--all: removed ones too)
   updates              What can be updated: system packages, Flatpaks, snaps, and apps from GitHub releases
+                       (--notify: as a desktop notification, after auto-updating when that is on)
+  background on|off    Check for updates every day while Unpack is closed (--auto: also install the
+                       ones that need no admin password)
   upgrade [name...]    Update those packages (all of them with no names, except held ones)
   hold <name>          Never offer updates for it (--skip: only skip the version offered now)
   unhold <name>        Offer its updates again
@@ -43,6 +46,8 @@ Options:
       --purge          With remove: also delete leftover settings, cache and data folders
       --all            With list: include removed apps
       --skip           With hold: skip only the version offered now
+      --notify         With updates: show a desktop notification instead
+      --auto           With background on: also install updates that need no admin password
       --json           Machine-readable output
 
 Exit codes: 0 done, 1 error, 2 the plan can't be run, 3 declined.";
@@ -57,6 +62,8 @@ struct Opts {
     package: bool,
     all: bool,
     skip: bool,
+    notify: bool,
+    auto: bool,
     json: bool,
     args: Vec<String>,
 }
@@ -73,6 +80,8 @@ fn parse(args: &[String]) -> Result<Opts, String> {
             "--package" => o.package = true,
             "--all" => o.all = true,
             "--skip" => o.skip = true,
+            "--notify" => o.notify = true,
+            "--auto" => o.auto = true,
             "--json" => o.json = true,
             s if s.starts_with('-') && s.len() > 1 => return Err(format!("unknown option {s}. See `unpack --help`.")),
             _ => o.args.push(a.clone()),
@@ -230,6 +239,23 @@ fn run(args: &[String]) -> Result<i32, String> {
             }
         }
         "remove" | "uninstall" => return remove(&o),
+        "updates" if o.notify => crate::background::check(&store()?, &system::detect())?,
+        "background" => {
+            let on = match o.args.as_slice() {
+                [a] if a == "on" => true,
+                [a] if a == "off" => false,
+                _ => return Err("background takes on or off.".into()),
+            };
+            crate::background::set(on)?;
+            let mut s = updates::load();
+            s.auto_update = on && o.auto;
+            updates::save(&s)?;
+            println!("{}", match (on, o.auto) {
+                (false, _) => "Background update checks are off.",
+                (true, false) => "Unpack will check for updates every day and tell you with a notification.",
+                (true, true) => "Unpack will check every day, install updates that need no admin password, and tell you about the rest.",
+            });
+        }
         "updates" => {
             let all = upgrades::list(&store()?.into_inner().map_err(|e| e.to_string())?.list()?, &system::detect());
             if o.json {

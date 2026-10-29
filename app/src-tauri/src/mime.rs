@@ -29,7 +29,7 @@ pub fn enabled() -> bool {
 }
 
 /// The program to start: the AppImage file itself when running from one, else this binary.
-fn program() -> Result<PathBuf, String> {
+pub fn program() -> Result<PathBuf, String> {
     match crate::updates::appimage() {
         Some(p) => Ok(p),
         None => std::env::current_exe().map_err(|e| e.to_string()),
