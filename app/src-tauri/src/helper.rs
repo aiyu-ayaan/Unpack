@@ -42,7 +42,7 @@ fn rules(program: &str) -> Option<(&'static [&'static str], &'static [&'static s
         "pacman" => (&[], &["-U", "-S", "-R", "-Syu", "--noconfirm", "--needed"]),
         "apk" => (&["add", "del", "upgrade"], &["--allow-untrusted"]),
         "snap" => (&["install", "remove", "refresh"], &["--dangerous", "--classic"]),
-        "flatpak" => (&["uninstall", "update"], &["--system", "-y", "--noninteractive"]),
+        "flatpak" => (&["install", "uninstall", "update"], &["--system", "-y", "--noninteractive"]),
         "rpm-ostree" => (&["install", "uninstall"], &["--idempotent", "--apply-live"]),
         "transactional-update" => (&["pkg", "install", "remove"], &["--non-interactive", "--allow-unsigned-rpm"]),
         _ => return None,

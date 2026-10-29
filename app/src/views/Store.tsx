@@ -14,6 +14,8 @@ const CATEGORIES: [string, string][] = [
 
 type Mode = { kind: "popular" } | { kind: "search"; q: string } | { kind: "category"; id: string; label: string };
 
+const sourceName = (s: string) => SOURCE[s] ?? (s.startsWith("flatpak:") ? `Flatpak (${s.slice(8)})` : s);
+
 const mb = (b: number) => `${(b / 1048576).toFixed(0)} MB`;
 
 export default function Store({ version, onReview }: { version: number; onReview: (i: Incoming) => void }) {
@@ -72,7 +74,7 @@ export default function Store({ version, onReview }: { version: number; onReview
         {sources.length > 1 && (
           <div role="group" aria-label="Source" className="flex flex-wrap items-center gap-1">
             <span className="mr-1 text-xs text-dim">From</span>
-            {["all", ...sources].map((s) => <button key={s} aria-pressed={filter === s} onClick={() => setFilter(s)} className={`chip cursor-pointer ${filter === s ? "chip-ok" : ""}`}>{s === "all" ? "All" : SOURCE[s] ?? s}</button>)}
+            {["all", ...sources].map((s) => <button key={s} aria-pressed={filter === s} onClick={() => setFilter(s)} className={`chip cursor-pointer ${filter === s ? "chip-ok" : ""}`}>{s === "all" ? "All" : sourceName(s)}</button>)}
           </div>
         )}
         {items === null && <div className="flex flex-col gap-3 py-6"><Progress value={null} label="Loading apps" /><div className="text-center text-dim">Loading apps…</div></div>}
@@ -88,7 +90,7 @@ export default function Store({ version, onReview }: { version: number; onReview
                 </span>
               </button>
               <div className="mt-auto flex items-center justify-between gap-2">
-                <span className="chip truncate" title={e.id}>{SOURCE[e.source] ?? e.source}</span>
+                <span className="chip truncate" title={e.id}>{sourceName(e.source)}</span>
                 {action(e)}
               </div>
             </article>
@@ -121,7 +123,7 @@ function AppDetail({ e, action, onBack }: { e: Entry; action: React.ReactNode; o
         <div className="min-w-0 flex-1">
           <h2 className="text-lg font-semibold text-strong">{e.name}</h2>
           <p className="text-dim">{e.summary}</p>
-          <div className="mt-2 flex flex-wrap gap-1.5"><span className="chip">{SOURCE[e.source] ?? e.source}</span>{facts.map((f) => <span key={f} className="chip">{f}</span>)}</div>
+          <div className="mt-2 flex flex-wrap gap-1.5"><span className="chip">{sourceName(e.source)}</span>{facts.map((f) => <span key={f} className="chip">{f}</span>)}</div>
         </div>
         {action}
       </div>

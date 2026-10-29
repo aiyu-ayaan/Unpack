@@ -416,6 +416,46 @@ fn native_search(n: Native, q: &str) -> Vec<Entry> {
     v
 }
 
+/// A configured Flatpak source.
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub struct Remote {
+    pub name: String,
+    pub url: String,
+    /// In the user's own installation (no admin password to use or remove).
+    pub user: bool,
+}
+
+/// `name<TAB>url<TAB>options` (flatpak remotes --columns=name,url,options).
+pub fn parse_remotes(out: &str) -> Vec<Remote> {
+    out.lines()
+        .filter_map(|l| {
+            let c: Vec<&str> = l.split('\t').collect();
+            let name = c.first()?.trim();
+            (!name.is_empty()).then(|| Remote { name: name.into(), url: c.get(1).unwrap_or(&"").trim().into(), user: c.get(2).is_some_and(|o| o.split(',').any(|x| x.trim() == "user")) })
+        })
+        .collect()
+}
+
+pub fn remotes() -> Vec<Remote> {
+    if !has("flatpak") {
+        return vec![];
+    }
+    capture("flatpak", &["remotes", "--columns=name,url,options"]).map(|o| parse_remotes(&o)).unwrap_or_default()
+}
+
+/// `application<TAB>name<TAB>description<TAB>remotes` (flatpak search). Flathub rows are left to its own API.
+pub fn parse_flatpak_search(out: &str) -> Vec<Entry> {
+    let mut v = vec![];
+    for l in out.lines() {
+        let c: Vec<&str> = l.split('\t').map(str::trim).collect();
+        let [id, name, summary, remotes] = c.as_slice() else { continue };
+        for r in remotes.split(',').map(str::trim).filter(|r| !r.is_empty() && *r != "flathub") {
+            v.push(Entry { source: format!("flatpak:{r}"), id: id.to_string(), name: name.to_string(), summary: summary.to_string(), icon: None });
+        }
+    }
+    v
+}
+
 /// Search every source this system has. Flathub needs the network; the others ask local tools.
 /// A source that fails is left out; only "nothing could be asked" is an error.
 pub fn search(q: &str, sys: &System) -> Result<Vec<Entry>, String> {
@@ -428,6 +468,10 @@ pub fn search(q: &str, sys: &System) -> Result<Vec<Entry>, String> {
         let mut rest = sys.native.map(|n| native_search(n, q)).unwrap_or_default();
         if has("snap") {
             rest.extend(capture("snap", &["find", q]).map(|o| parse_snap(&o)).unwrap_or_default().into_iter().take(NATIVE_MAX));
+        }
+        // Other Flatpak sources the user added, searched in their local AppStream copy.
+        if remotes().iter().any(|r| r.name != "flathub") {
+            rest.extend(capture("flatpak", &["search", "--columns=application,name,description,remotes", q]).map(|o| parse_flatpak_search(&o)).unwrap_or_default().into_iter().take(NATIVE_MAX));
         }
         (flat.join().unwrap_or_else(|_| Err("Flathub search stopped".into())), rest)
     });
@@ -460,6 +504,16 @@ mod tests {
         assert_eq!(description_field("Package: vlc\nDescription-en: multimedia player\n VLC plays files.\n .\n It streams.\nHomepage: x\n"), "multimedia player\nVLC plays files.\n\nIt streams.");
         assert_eq!(description_field("Name : vlc\nDescription  : The player\n             : for all.\n"), "The player\nfor all.");
         assert_eq!(description_field("name: vlc\ndescription: |\n  Plays everything.\ncommands:\n"), "Plays everything.");
+    }
+
+    #[test]
+    fn flatpak_sources() {
+        assert_eq!(parse_remotes("flathub\thttps://dl.flathub.org/repo/\tsystem\nfedora\toci+https://registry.fedoraproject.org\tuser,disabled\n"), vec![
+            Remote { name: "flathub".into(), url: "https://dl.flathub.org/repo/".into(), user: false },
+            Remote { name: "fedora".into(), url: "oci+https://registry.fedoraproject.org".into(), user: true },
+        ]);
+        let found = parse_flatpak_search("org.a.A\tA\tAn app\tflathub,kde\norg.b.B\tB\tOnly flathub\tflathub\n");
+        assert_eq!(found, vec![Entry { source: "flatpak:kde".into(), id: "org.a.A".into(), name: "A".into(), summary: "An app".into(), icon: None }]);
     }
 
     #[test]

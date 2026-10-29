@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { ExternalLink, Code2, UserRound, Globe, Bug, RefreshCw, XCircle, CheckCircle2, Download } from "lucide-react";
-import { api, errText, type Channel, type Imported, type Link } from "../api";
+import { api, errText, type Channel, type Imported, type Link, type Remote } from "../api";
 import type { Incoming } from "../App";
 import { plainNotes, type Update } from "../update";
 import { Banner, PageHeader, Progress } from "../components/ui";
@@ -50,6 +50,36 @@ function FileHandler() {
         <div><p className="text-strong">Open package files with Unpack</p><p className="text-xs text-dim">Double-click a .deb, .rpm, .AppImage, .flatpak or .snap to check it here first.</p></div>
         <button role="switch" aria-checked={!!on} disabled={on === null} onClick={() => void toggle()} className={`btn ${on ? "btn-primary" : ""}`}>{on ? "On" : "Off"}</button>
       </div>
+      {err && <div className="border-t border-line p-4"><Banner tone="bad" icon={<XCircle className="h-4 w-4" />}>{err}</Banner></div>}
+    </>
+  );
+}
+
+function Remotes({ onReview }: { onReview: (i: Incoming) => void }) {
+  const [list, setList] = useState<Remote[] | null>(null);
+  const [url, setUrl] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => { api.flatpakRemotes().then(setList).catch((e) => { setErr(errText(e)); setList([]); }); }, []);
+  const remove = async (name: string) => {
+    setErr(null);
+    try { onReview({ plan: await api.remoteRemovePlan(name) }); } catch (e) { setErr(errText(e)); }
+  };
+  return (
+    <>
+      {list?.length === 0 && !err && <p className="border-b border-line px-4 py-3 text-dim">Flatpak is not set up, or has no sources yet.</p>}
+      {list?.map((r) => (
+        <div key={`${r.user}:${r.name}`} className="flex items-center gap-3 border-b border-line px-4 py-2">
+          <div className="min-w-0 flex-1"><div className="truncate text-strong">{r.name}</div><div className="truncate text-xs text-dim">{r.url}</div></div>
+          <span className="chip">{r.user ? "Just you" : "Everyone"}</span>
+          {r.name !== "flathub" && <button className="btn btn-ghost" onClick={() => void remove(r.name)}>Remove</button>}
+        </div>
+      ))}
+      <form className="flex flex-wrap items-center gap-2 px-4 py-3" onSubmit={(e) => { e.preventDefault(); if (url.trim()) onReview({ input: url.trim() }); }}>
+        <label className="min-w-0 flex-1"><span className="sr-only">Link to a .flatpakrepo file</span>
+          <input className="input" placeholder="https://example.org/repo.flatpakrepo" value={url} onChange={(e) => setUrl(e.target.value)} spellCheck={false} /></label>
+        <button className="btn" disabled={!url.trim()}>Add source</button>
+      </form>
+      <p className="px-4 pb-3 text-xs text-dim">Apps from added sources show up in Store searches. Adding one is checked and reviewed like an install.</p>
       {err && <div className="border-t border-line p-4"><Banner tone="bad" icon={<XCircle className="h-4 w-4" />}>{err}</Banner></div>}
     </>
   );
@@ -130,6 +160,8 @@ export default function Settings({ u, onReview }: { u: Update; onReview: (i: Inc
       </Card>
 
       <Card title="Files"><FileHandler /></Card>
+
+      <Card title="Flatpak sources"><Remotes onReview={onReview} /></Card>
 
       <Card title="Move to another computer"><Transfer onReview={onReview} /></Card>
 

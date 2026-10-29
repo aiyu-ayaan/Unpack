@@ -24,6 +24,13 @@ function activeStep(plan: Plan, lines: LogLine[]): number {
 
 const mb = (b: number) => `${(b / 1048576).toFixed(1)} MB`;
 
+/** Plans that change something already there: page title, button, and the message when done. */
+const VERB: Record<string, [string, string, string]> = {
+  update: ["Update", "Update", "Done."],
+  fix: ["Fix an app", "Fix", "Done."],
+  "flatpak-remote": ["Remove a Flatpak source", "Remove", "Removed."],
+};
+
 export default function Install({ onInstalled, onTask, incoming, onTaken }: { onInstalled: () => void; onTask: (t: Task) => void; incoming: Incoming | null; onTaken: () => void }) {
   const [text, setText] = useState("");
   const [phase, setPhase] = useState<Phase>("idle");
@@ -116,7 +123,7 @@ export default function Install({ onInstalled, onTask, incoming, onTaken }: { on
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-5">
       {plan && phase !== "idle" && phase !== "analyzing"
-        ? <PageHeader title={plan.kind === "update" ? "Update" : plan.kind === "fix" ? "Fix an app" : "Install an app"} sub="Review what will happen, then go ahead." />
+        ? <PageHeader title={VERB[plan.kind]?.[0] ?? "Install an app"} sub="Review what will happen, then go ahead." />
         : <PageHeader title="Install an app" sub="Drop a file, or paste a link, download command or git address. Unpack works out the rest." />}
 
       {(phase === "idle" || phase === "analyzing") && (
@@ -233,13 +240,13 @@ export default function Install({ onInstalled, onTask, incoming, onTaken }: { on
 
           {waitingRoot && <Banner tone="warn" icon={<Lock className="h-4 w-4" />}>Enter your password in the system prompt to continue. If no window appears, see the message after it fails.</Banner>}
           {phase !== "review" && <Log lines={lines} running={phase === "running"} />}
-          {phase === "done" && <Banner tone="good" icon={<CheckCircle2 className="h-4 w-4" />}>{plan.kind === "update" || plan.kind === "fix" ? "Done." : "Installed. You can find it in your Library."}</Banner>}
+          {phase === "done" && <Banner tone="good" icon={<CheckCircle2 className="h-4 w-4" />}>{VERB[plan.kind]?.[2] ?? "Installed. You can find it in your Library."}</Banner>}
           {phase === "done" && notes.map((n, i) => <Banner key={i} tone="warn" icon={<AlertTriangle className="h-4 w-4" />}>{n}</Banner>)}
           {phase === "failed" && <Banner tone="bad" icon={<XCircle className="h-4 w-4" />}>{error ?? "Install failed"}</Banner>}
           {phase === "failed" && sudo && <button className="btn self-start" onClick={() => copy(sudo)}><Copy className="h-4 w-4" aria-hidden /> {copied ? "Copied" : "Copy terminal command"}</button>}
 
           <div className="flex justify-end gap-2">
-            {phase === "review" && <button className="btn btn-primary" disabled={!plan.supported} onClick={run}><Play className="h-4 w-4" aria-hidden /> {plan.kind === "update" ? "Update" : plan.kind === "fix" ? "Fix" : "Install"}</button>}
+            {phase === "review" && <button className="btn btn-primary" disabled={!plan.supported} onClick={run}><Play className="h-4 w-4" aria-hidden /> {VERB[plan.kind]?.[1] ?? "Install"}</button>}
             {phase === "running" && <button className="btn" disabled><Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Working…</button>}
             {(phase === "done" || phase === "failed") && <button className="btn" onClick={reset}>Done</button>}
           </div>

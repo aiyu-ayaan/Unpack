@@ -1112,6 +1112,16 @@ pub fn plan_repo(source: &str, ident: &str, sys: &System) -> Plan {
             p.cmd("Install from Flathub", false, "flatpak", &["install", "--user", "-y", "--noninteractive", "flathub", ident], None);
             p.uninstall = Uninstall::Manager { manager: "flatpak".into(), ident: ident.into(), user: true };
         }
+        s if s.starts_with("flatpak:") => {
+            let remote = &s["flatpak:".len()..];
+            let Some(r) = crate::catalog::remotes().into_iter().find(|r| r.name == remote && safe_ident(&r.name)) else {
+                p.refuse(&format!("There is no Flatpak source called {remote:?} on this computer."), &[]);
+                return p;
+            };
+            let flag = if r.user { "--user" } else { "--system" };
+            p.cmd(&format!("Install from {remote}"), !r.user, "flatpak", &["install", flag, "-y", "--noninteractive", remote, ident], None);
+            p.uninstall = Uninstall::Manager { manager: "flatpak".into(), ident: ident.into(), user: r.user };
+        }
         "snap" => {
             if !has("snap") {
                 p.refuse("Snap support (snapd) isn't installed.", &["Install the Flathub version instead, or install snapd first."]);
@@ -1140,6 +1150,21 @@ pub fn plan_repo(source: &str, ident: &str, sys: &System) -> Plan {
         },
     }
     read_only_base(&mut p, sys);
+    p
+}
+
+/// Remove a configured Flatpak source. Apps installed from it stay, but get no more updates.
+pub fn plan_remote_remove(name: &str) -> Plan {
+    let mut p = Plan::new("flatpak-remote", name, "flatpak");
+    p.track = Track::Nothing;
+    p.title = format!("Remove the Flatpak source {name}");
+    match crate::catalog::remotes().into_iter().find(|r| r.name == name && safe_ident(&r.name)) {
+        Some(r) => {
+            p.warnings.push(format!("Apps installed from {name} stay installed but get no more updates. Flatpak refuses to remove a source that runtimes still need."));
+            p.cmd("Remove the source", !r.user, "flatpak", &["remote-delete", if r.user { "--user" } else { "--system" }, name], None);
+        }
+        None => p.refuse(&format!("There is no Flatpak source called {name:?}."), &[]),
+    }
     p
 }
 

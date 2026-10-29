@@ -16,6 +16,7 @@ Commands:
   install <input>      Show the plan, ask, install, and track it
   search <words>       Find apps on Flathub, the Snap Store and your distro's repositories
   info <source> <id>   Description, permissions and size of one search result
+  remotes [remove <n>] Flatpak sources; add one with `unpack install <url>.flatpakrepo`
   get <source> <id>    Install one search result (source: flathub, snap, apt, dnf, zypper, pacman, apk, xbps, emerge)
   list                 Apps installed with Unpack (--all: removed ones too)
   updates              What can be updated: system packages, Flatpaks, snaps, and apps from GitHub releases
@@ -161,6 +162,25 @@ fn run(args: &[String]) -> Result<i32, String> {
                 println!("Install one with `unpack get <source> <id>`.");
             }
         }
+        "remotes" => match o.args.as_slice() {
+            [] => {
+                let all = catalog::remotes();
+                if o.json {
+                    json(&all)?;
+                } else {
+                    for r in &all {
+                        println!("{:<16} {:<7} {}", r.name, if r.user { "user" } else { "system" }, r.url);
+                    }
+                }
+            }
+            [cmd, name] if cmd == "remove" => {
+                let mut plan = plans::plan_remote_remove(name);
+                plan.id = analyze::new_id();
+                if o.json { json(&plan)?; } else { show(&plan); }
+                return run_plan(plan, &o);
+            }
+            _ => return Err("remotes takes no arguments, or `remove <name>`.".into()),
+        },
         "info" => {
             let [source, id] = o.args.as_slice() else { return Err("info needs a source and an id, as `unpack search` lists them.".into()) };
             let d = catalog::detail(source, id, &system::detect())?;
