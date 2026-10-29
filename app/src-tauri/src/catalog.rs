@@ -129,6 +129,31 @@ pub fn parse_snap(out: &str) -> Vec<Entry> {
         .collect()
 }
 
+/// `[-] name-1.2_1   summary` (xbps-query -Rs).
+pub fn parse_xbps(out: &str) -> Vec<Entry> {
+    out.lines()
+        .filter_map(|l| {
+            let rest = l.get(4..)?.trim_start();
+            let (nv, s) = rest.split_once(char::is_whitespace)?;
+            Some(entry("xbps", nv.rsplit_once('-')?.0, s))
+        })
+        .collect()
+}
+
+/// `*  cat/name` then an indented `Description:` line (emerge --search). The name alone is what emerge takes.
+pub fn parse_emerge(out: &str) -> Vec<Entry> {
+    let mut v: Vec<Entry> = vec![];
+    for l in out.lines() {
+        if let Some(atom) = l.strip_prefix("*  ") {
+            let name = atom.trim().split(' ').next().unwrap_or_default();
+            v.push(entry("emerge", name.rsplit('/').next().unwrap_or(name), ""));
+        } else if let (Some(d), Some(last)) = (l.trim().strip_prefix("Description:"), v.last_mut()) {
+            last.summary = d.trim().into();
+        }
+    }
+    v
+}
+
 fn native_search(n: Native, q: &str) -> Vec<Entry> {
     let found = match n {
         Native::Apt => capture("apt-cache", &["search", "--names-only", q]).map(|o| parse_apt(&o)),
@@ -136,6 +161,8 @@ fn native_search(n: Native, q: &str) -> Vec<Entry> {
         Native::Zypper => capture("zypper", &["--non-interactive", "--no-refresh", "search", q]).map(|o| parse_zypper(&o)),
         Native::Pacman => capture("pacman", &["-Ss", q]).map(|o| parse_pacman(&o)),
         Native::Apk => capture("apk", &["search", "-v", q]).map(|o| parse_apk(&o)),
+        Native::Xbps => capture("xbps-query", &["-Rs", q]).map(|o| parse_xbps(&o)),
+        Native::Portage => capture("emerge", &["--search", "--color=n", q]).map(|o| parse_emerge(&o)),
     };
     let mut v = found.unwrap_or_default();
     v.dedup_by(|a, b| a.id == b.id);
@@ -184,6 +211,8 @@ mod tests {
         assert_eq!(parse_apk("vlc-3.0.21-r0 - player\nlibvlc-dev-3.0-r1 - dev\n")[1].id, "libvlc-dev");
         assert_eq!(parse_snap("Name Version Publisher Notes Summary\nvlc 3.0 videolan✓ - The ultimate player\n"), vec![entry("snap", "vlc", "The ultimate player")]);
         assert_eq!(parse_tabbed("dnf", "vlc\tPlayer\n"), vec![entry("dnf", "vlc", "Player")]);
+        assert_eq!(parse_xbps("[-] vlc-3.0.21_1           Free and portable multimedia player\n[*] lib-x-1.0_2 x\n"), vec![entry("xbps", "vlc", "Free and portable multimedia player"), entry("xbps", "lib-x", "x")]);
+        assert_eq!(parse_emerge("*  media-video/vlc\n      Latest version available: 3.0\n      Description:   VLC media player\n*  media-video/vlc-x [ Masked ]\n"), vec![entry("emerge", "vlc", "VLC media player"), entry("emerge", "vlc-x", "")]);
     }
 
     #[test]

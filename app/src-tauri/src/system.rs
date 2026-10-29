@@ -26,6 +26,10 @@ pub enum Native {
     Zypper,
     Pacman,
     Apk,
+    /// Void Linux.
+    Xbps,
+    /// Gentoo: packages build from source, so installs take long.
+    Portage,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -95,6 +99,8 @@ fn native_for(family: Family) -> Option<Native> {
         Family::Suse => Some(Native::Zypper),
         Family::Arch => Some(Native::Pacman),
         Family::Alpine => Some(Native::Apk),
+        Family::Void => Some(Native::Xbps),
+        Family::Gentoo => Some(Native::Portage),
         _ => None,
     };
     let present = |n: Native| match n {
@@ -103,10 +109,12 @@ fn native_for(family: Family) -> Option<Native> {
         Native::Zypper => has("zypper"),
         Native::Pacman => has("pacman"),
         Native::Apk => has("apk"),
+        Native::Xbps => has("xbps-install"),
+        Native::Portage => has("emerge"),
     };
     // Trust the family only when its tool exists; otherwise fall back to whatever is on PATH.
     by_family.filter(|n| present(*n)).or_else(|| {
-        [Native::Apt, Native::Dnf, Native::Zypper, Native::Pacman, Native::Apk]
+        [Native::Apt, Native::Dnf, Native::Zypper, Native::Pacman, Native::Apk, Native::Xbps, Native::Portage]
             .into_iter()
             .find(|n| present(*n))
     })

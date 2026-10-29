@@ -90,7 +90,8 @@ Containers: `scripts/test-distros.sh` (CLI build, as root plus a normal user wit
 - [x] Immutable: Silverblue (rpm-ostree layering with `--apply-live`), MicroOS (transactional-update), SteamOS (refuse system writes, advise Flatpak/AppImage/distrobox); native upgrades not listed there
 - [ ] Verify rpm-ostree and transactional-update flows on Silverblue and Aeon **(unverified)**
 - [x] NixOS: AppImage menu entries through `appimage-run`, `nix-ld` note for foreign programs (detected by the missing glibc loader, not the distro name)
-- [ ] Void / Gentoo: universal formats + source plan only
+- [x] Void / Gentoo: universal formats + source plan, with xbps/emerge for helper and build tools, Store search, scan, removal (Void updates too)
+- [ ] Verify Void and Gentoo in containers or VMs **(unverified)**
 - [x] glibc vs musl warning from the program's `PT_INTERP`
 
 ## M6 — Packaging Unpack itself

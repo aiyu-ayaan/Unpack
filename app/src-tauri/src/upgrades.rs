@@ -122,6 +122,17 @@ fn parse_flatpak(out: &str, user: bool) -> Vec<Upgrade> {
         .collect()
 }
 
+/// `name-1.2_1 update x86_64 <repo> <size> <size>` (xbps-install -Mun).
+pub fn parse_xbps(out: &str) -> Vec<Upgrade> {
+    out.lines()
+        .filter_map(|l| {
+            let w: Vec<&str> = l.split_whitespace().collect();
+            let (name, latest) = w.first()?.rsplit_once('-')?;
+            (w.get(1) == Some(&"update")).then(|| up("xbps", name, "", latest))
+        })
+        .collect()
+}
+
 /// `Name Version Rev Size Publisher Notes` (snap refresh --list).
 pub fn parse_snap(out: &str) -> Vec<Upgrade> {
     out.lines()
@@ -148,7 +159,9 @@ pub fn system(sys: &System) -> Vec<Upgrade> {
         // checkupdates (pacman-contrib) syncs a private copy of the database; plain -Qu reads the last sync.
         Some(Native::Pacman) => parse_pacman(&if has("checkupdates") { stdout("checkupdates", &[]) } else { stdout("pacman", &["-Qu"]) }),
         Some(Native::Apk) => parse_apk(&stdout("apk", &["list", "--upgradable"])),
-        None => vec![],
+        Some(Native::Xbps) => parse_xbps(&stdout("xbps-install", &["-Mun"])),
+        // shortcut: Gentoo's update list needs a full dependency calculation (`emerge -puDN @world`, minutes); not listed.
+        Some(Native::Portage) | None => vec![],
     };
     if has("flatpak") {
         for (flag, user) in [("--user", true), ("--system", false)] {
@@ -370,7 +383,7 @@ pub fn plan(picks: &[Pick], sys: &System) -> Plan {
     }
     let names = |m: &str, user: Option<bool>| -> Vec<&str> { picks.iter().filter(|k| k.manager == m && user.is_none_or(|u| k.user == u)).map(|k| k.name.as_str()).collect() };
     let native = sys.native.filter(|_| !sys.immutable).map(crate::plan::manager_name);
-    for m in ["apt", "dnf", "zypper", "pacman", "apk"] {
+    for m in ["apt", "dnf", "zypper", "pacman", "apk", "xbps"] {
         let n = names(m, None);
         if n.is_empty() {
             continue;
@@ -393,6 +406,7 @@ pub fn plan(picks: &[Pick], sys: &System) -> Plan {
                 p.warnings.push("Arch Linux updates the whole system at once, so every package with an update will be updated.".into());
                 p.cmd("Update the system", true, "pacman", &["-Syu", "--noconfirm"], None);
             }
+            "xbps" => p.cmd("Update packages", true, "xbps-install", &[&["-Suy"][..], &n].concat(), None),
             _ => p.cmd("Update packages", true, "apk", &[&["upgrade"][..], &n].concat(), None),
         }
     }
@@ -428,6 +442,7 @@ mod tests {
         assert_eq!(parse_apk("lib-foo-2.0-r0 x86_64 {foo} (MIT) [upgradable from: lib-foo-1.0-r3]\n"), vec![up("apk", "lib-foo", "1.0-r3", "2.0-r0")]);
         assert_eq!(parse_snap("Name Version Rev Size Publisher Notes\nvlc 3.0.21 3777 300MB videolan -\n"), vec![up("snap", "vlc", "", "3.0.21")]);
         assert!(parse_flatpak("org.a.A\t1.2\n", true)[0].user);
+        assert_eq!(parse_xbps("vlc-3.0.21_2 update x86_64 https://repo-default.voidlinux.org/current 1MB 2MB\nfoo-1_1 install x86_64 r 1 1\n"), vec![up("xbps", "vlc", "", "3.0.21_2")]);
     }
 
     #[test]

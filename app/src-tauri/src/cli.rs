@@ -15,7 +15,7 @@ Commands:
   check <input>        Show the plan for a file, link, git address or curl/wget command; nothing runs
   install <input>      Show the plan, ask, install, and track it
   search <words>       Find apps on Flathub, the Snap Store and your distro's repositories
-  get <source> <id>    Install one search result (source: flathub, snap, apt, dnf, zypper, pacman, apk)
+  get <source> <id>    Install one search result (source: flathub, snap, apt, dnf, zypper, pacman, apk, xbps, emerge)
   list                 Apps installed with Unpack (--all: removed ones too)
   updates              What can be updated: system packages, Flatpaks, snaps, and apps from GitHub releases
   upgrade [name...]    Update those packages (all of them with no names)

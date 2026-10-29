@@ -63,6 +63,17 @@ pub fn scan() -> Vec<SysPkg> {
             all.extend(o.lines().filter(|l| !l.trim().is_empty()).map(|n| pkg("apk", n.trim(), "")));
         }
     }
+    if has("xbps-query") {
+        if let Ok(o) = capture("xbps-query", &["-m"]) {
+            all.extend(o.lines().filter_map(|l| l.trim().rsplit_once('-')).map(|(n, v)| pkg("xbps", n, v)));
+        }
+    }
+    if has("emerge") {
+        // The world set: `cat/name` or `cat/name:slot`; emerge takes the name alone.
+        if let Ok(o) = std::fs::read_to_string("/var/lib/portage/world") {
+            all.extend(o.lines().filter_map(|l| l.trim().split(':').next()?.rsplit('/').next()).filter(|n| !n.is_empty()).map(|n| pkg("emerge", n, "")));
+        }
+    }
     if has("snap") {
         if let Ok(o) = capture("snap", &["list"]) {
             all.extend(parse_snap(&o));

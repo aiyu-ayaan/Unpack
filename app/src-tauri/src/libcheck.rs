@@ -11,6 +11,7 @@ fn package_files(manager: &str, ident: &str) -> Vec<PathBuf> {
         "dnf" | "yum" | "zypper" => ("rpm", vec!["-ql", ident]),
         "pacman" => ("pacman", vec!["-Ql", ident]),
         "apk" => ("apk", vec!["info", "-L", ident]),
+        "xbps" => ("xbps-query", vec!["-f", ident]),
         _ => return vec![],
     };
     let Ok(out) = capture(prog, &args) else { return vec![] };

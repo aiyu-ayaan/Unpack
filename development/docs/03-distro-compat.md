@@ -20,8 +20,8 @@ Goal: work on any distro. Strategy: never hard-code distro names for behaviour. 
 | SUSE | opensuse-leap, opensuse-tumbleweed, sles | `.rpm` | `zypper install ./f.rpm` | `zypper remove` |
 | Arch | arch, manjaro, endeavouros, garuda, cachyos | `.pkg.tar.zst` | `pacman -U f` | `pacman -R` |
 | Alpine | alpine, postmarketos | `.apk` | `apk add --allow-untrusted ./f.apk` | `apk del` |
-| Void | void | `.xbps` (not in our scope) | n/a — use universal formats | `xbps-remove` |
-| Gentoo | gentoo | source ebuilds | n/a — use universal formats or source plan | `emerge -C` |
+| Void | void | `.xbps` (local files not in our scope) | repo packages: `xbps-install -Sy` | `xbps-remove -y` |
+| Gentoo | gentoo | source ebuilds | repo packages: `emerge --ask=n --noreplace` | `emerge --ask=n --depclean` |
 | NixOS | nixos | Nix store | FHS-dependent binaries fail; AppImage works via `appimage-run`; others need `nix-ld` | declarative |
 
 ## Immutable and special systems
@@ -85,3 +85,6 @@ With `distrobox` and `podman` or `docker` on PATH, a `.deb`, `.rpm`, Arch or Alp
 - **Wayland vs X11:** irrelevant to install but affects whether a tray/GUI works; no action.
 - **Old distro releases:** `.deb` built on a newer Ubuntu may need newer libc than Debian stable has. `apt` surfaces this; relay the message in plain words.
 - **Third-party repo setup scripts** (add apt/dnf repo + key). Treat as scripts; extra warning about repo trust.
+
+## Void and Gentoo
+`Native::Xbps` and `Native::Portage` (detected by `xbps-install` / `emerge` on PATH, family from os-release as a hint). They drive repository installs only: helper tools for universal formats (`flatpak`, FUSE 2 as `fuse` / `sys-fs/fuse:0`), build tools for source plans (`base-devel` on Void; `gcc`, `make`, `go`, `rust`, `nodejs`, `pipx` by bare name on Gentoo), Store search (`xbps-query -Rs`, `emerge --search`), Library scan (`xbps-query -m`, the `/var/lib/portage/world` set), removal, and the update list on Void (`xbps-install -Mun`; Gentoo's needs a full `emerge -puDN @world` and is not listed). Local package files of other distros go to a distrobox container or get advice, as elsewhere. Whole section **(unverified on a real Void or Gentoo system)**.

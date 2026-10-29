@@ -4,7 +4,7 @@ import { api, errText, type App, type Entry } from "../api";
 import type { Incoming } from "../App";
 import { Banner, Empty, PageHeader, Progress } from "../components/ui";
 
-const SOURCE: Record<string, string> = { flathub: "Flathub", snap: "Snap Store", apt: "Debian/Ubuntu repos", dnf: "Fedora repos", zypper: "openSUSE repos", pacman: "Arch repos", apk: "Alpine repos" };
+const SOURCE: Record<string, string> = { flathub: "Flathub", snap: "Snap Store", apt: "Debian/Ubuntu repos", dnf: "Fedora repos", zypper: "openSUSE repos", pacman: "Arch repos", apk: "Alpine repos", xbps: "Void repos", emerge: "Gentoo repos" };
 
 export default function Store({ version, onReview }: { version: number; onReview: (i: Incoming) => void }) {
   const [q, setQ] = useState("");

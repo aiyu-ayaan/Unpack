@@ -227,6 +227,14 @@ pub fn install_pkgs(native: Native, pkgs: &[&str]) -> (String, Vec<String>) {
             a.push("add".into());
             "apk"
         }
+        Native::Xbps => {
+            a.push("-Sy".into());
+            "xbps-install"
+        }
+        Native::Portage => {
+            a.extend(["--ask=n", "--noreplace"].map(String::from));
+            "emerge"
+        }
     };
     a.extend(pkgs.iter().map(|s| s.to_string()));
     (prog.into(), a)
@@ -576,7 +584,8 @@ pub fn fuse2_package(native: Native) -> &'static str {
         Native::Dnf => "fuse-libs",
         Native::Zypper => "libfuse2",
         Native::Pacman => "fuse2",
-        Native::Apk => "fuse",
+        Native::Apk | Native::Xbps => "fuse",
+        Native::Portage => "sys-fs/fuse:0",
     }
 }
 
@@ -805,6 +814,8 @@ fn base_build_pkgs(sys: &System) -> Vec<&'static str> {
         Some(Native::Zypper) => vec!["gcc", "gcc-c++", "make"],
         Some(Native::Pacman) => vec!["base-devel"],
         Some(Native::Apk) => vec!["build-base"],
+        Some(Native::Xbps) => vec!["base-devel"],
+        Some(Native::Portage) => vec!["gcc", "make"],
         None => vec![],
     }
 }
@@ -812,10 +823,11 @@ fn base_build_pkgs(sys: &System) -> Vec<&'static str> {
 fn named_pkg(sys: &System, generic: &'static str) -> &'static str {
     match (generic, sys.native) {
         ("ninja", Some(Native::Apt | Native::Dnf)) => "ninja-build",
-        ("python-pipx", Some(Native::Apt | Native::Dnf | Native::Zypper)) => "pipx",
+        ("python-pipx", Some(Native::Apt | Native::Dnf | Native::Zypper | Native::Portage)) => "pipx",
         ("python-pipx", _) => "python-pipx",
-        ("golang", Some(Native::Pacman)) => "go",
-        ("golang", Some(Native::Zypper)) => "go",
+        ("golang", Some(Native::Pacman | Native::Zypper | Native::Xbps | Native::Portage)) => "go",
+        ("cargo", Some(Native::Portage)) => "rust",
+        ("npm", Some(Native::Xbps | Native::Portage)) => "nodejs",
         _ => generic,
     }
 }
@@ -885,7 +897,7 @@ pub fn plan_content(content: &Content, dir: &Path, name: &str, sys: &System, as_
                 }
             }
             Build::Cargo => {
-                build_tools(sys, &mut p, &["cargo"], &["cargo"]);
+                build_tools(sys, &mut p, &["cargo"], &[named_pkg(sys, "cargo")]);
                 p.cmd("Build and install", false, "cargo", &["install", "--path", ".", "--root", &prefix], d);
             }
             Build::Go => {
@@ -898,7 +910,7 @@ pub fn plan_content(content: &Content, dir: &Path, name: &str, sys: &System, as_
                 p.cmd("Install with pipx", false, "pipx", &["install", "."], d);
             }
             Build::Node => {
-                build_tools(sys, &mut p, &["npm"], &["npm"]);
+                build_tools(sys, &mut p, &["npm"], &[named_pkg(sys, "npm")]);
                 p.cmd("Install with npm", false, "npm", &["install", "-g", "--prefix", &prefix, "."], d);
             }
             Build::Make => {
@@ -1139,6 +1151,8 @@ pub fn manager_name(n: Native) -> &'static str {
         Native::Zypper => "zypper",
         Native::Pacman => "pacman",
         Native::Apk => "apk",
+        Native::Xbps => "xbps",
+        Native::Portage => "emerge",
     }
 }
 
@@ -1154,6 +1168,9 @@ pub fn removal(manager: &str, ident: &str, user: bool) -> Result<(String, Vec<St
         "zypper" => ("zypper", s(&["--non-interactive", "remove", ident]), true),
         "pacman" => ("pacman", s(&["-R", "--noconfirm", ident]), true),
         "apk" => ("apk", s(&["del", ident]), true),
+        "xbps" => ("xbps-remove", s(&["-y", ident]), true),
+        // --depclean also drops it from the world set, and keeps it when something else needs it.
+        "emerge" => ("emerge", s(&["--ask=n", "--depclean", ident]), true),
         "snap" => ("snap", s(&["remove", ident]), true),
         "flatpak" => ("flatpak", s(&["uninstall", if user { "--user" } else { "--system" }, "-y", ident]), !user),
         "flatpak-remote" => ("flatpak", s(&["remote-delete", "--user", ident]), false),
