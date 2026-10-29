@@ -14,13 +14,20 @@ SQLite, and can uninstall it later. Made for people new to Linux, who should not
 `apt`, `dnf`, `pacman` or `flatpak` they are on.
 
 - **Drop or paste anything**: a file, a path, an `https://` link, a git URL, or `curl -fsSL … | sh`
+- **Store**: browse Flathub's popular apps, or search Flathub, the Snap Store and your distro's repositories at once, and install with one reviewed plan
+- **Updates for everything**: one list of updates from your package manager, Flatpak, snap, and new GitHub releases of apps you installed with Unpack (including AppImage update info); update one or all with a single admin prompt
+- **Open with Unpack**: double-click a `.deb`, `.rpm`, `.AppImage`, `.flatpak` or `.snap` (opt-in, Settings > Files)
+- **Fix my install**: finds a missing runtime, FUSE 2, a lost exec bit or missing libraries, and plans the repair
+- **Try scripts in a sandbox**: run an installer script under bubblewrap (read-only system, no network, empty home) and see what it would do first
 - **Read before run**: every install shows a plan (what the file is, the exact commands, whether admin rights are needed) and nothing runs until you press *install*
 - **Native first**: `.deb`, `.rpm`, Arch packages, Alpine `.apk`, `.snap`, `.flatpak`, `.AppImage`, `.run`, `.sh`, archives, source trees and `.dsc`
-- **Detects capabilities, not distro names**: looks for the package managers and helpers that exist, and for a read-only base system
+- **Detects capabilities, not distro names**: looks for the package managers and helpers that exist, and for a read-only base system (layers packages with `rpm-ostree` or `transactional-update`, refuses system writes on SteamOS), a missing standard loader (NixOS: `appimage-run`, `nix-ld`), and glibc vs musl programs
+- **Packages from other distros**: with distrobox, a `.deb` on Fedora (or an `.rpm` on Ubuntu…) installs inside a container and its apps appear in your menu
+- **Move to a new computer**: export the apps you installed and bring them back on another machine
 - **Live progress**: per-step install progress, an Output panel that streams as it runs, and a status bar with the running task
-- **One admin prompt**: root steps are merged into a single `pkexec` call; if no password window can appear, Unpack shows the exact `sudo` command to run instead
+- **One admin prompt**: root steps are merged into a single `pkexec` call, through a narrow polkit helper when Unpack is installed as a package; if no password window can appear, Unpack shows the exact `sudo` command to run instead
 - **Tracked and reversible**: every install records how to remove it, and removal offers to delete the settings and cache folders the app left behind; the Library also lists packages you installed some other way
-- **Desktop app or command line**: the same engine as `unpack install file.deb`, `unpack list`, `unpack remove`; a static command-line build runs on any distro, even without a desktop
+- **Desktop app or command line**: the same engine as `unpack install file.deb`, `unpack search`, `unpack updates`, `unpack fix`, `unpack list`, `unpack remove`; a static command-line build runs on any distro, even without a desktop
 - **Updates**: checks GitHub releases on a stable, beta or alpha channel; an AppImage updates itself, a `.deb`/`.rpm` is downloaded and opened in your installer
 - **History** of everything Unpack did and when
 - **Safe by design**: the UI never sends command lines, archives are checked for path traversal, files are re-hashed before running, and `--allow-untrusted` style flags are never passed silently
@@ -111,13 +118,13 @@ The database lives at `~/.local/share/unpack/unpack.db`.
 
 | Input | What Unpack does |
 |---|---|
-| `.deb`, `.rpm`, `.pkg.tar.zst`, `.apk` (Alpine) | Installs with the native manager when the system has it, otherwise explains what is missing |
+| `.deb`, `.rpm`, `.pkg.tar.zst`, `.apk` (Alpine) | Installs with the native manager when the system has it, inside a distrobox container of the right family when it does not, otherwise explains what is missing |
 | Android `.apk` | Rejected with an explanation |
 | `.snap`, `.flatpak`, `.flatpakref`, `.flatpakrepo` | Installs with `snap` or `flatpak --user` |
 | `.AppImage` | Copies to `~/Applications`, makes it executable, adds a menu entry and icon, checks FUSE 2 |
 | `.run`, `.bin`, `.sh` | Shows the script, runs it only after you agree, traces the files it creates |
 | `.tar.*`, `.zip`, `.7z`, `.gz`, `.xz`, `.bz2`, `.zst` | Checks members, extracts, installs portable apps to `~/.local/opt` with a launcher |
-| Source tree, git URL, `.dsc` | Detects the build system (autotools, CMake, Meson, Cargo, Go, Python, Node, `PKGBUILD`, `debian/`), builds, then installs the result natively |
+| Source tree, git URL, `.dsc` | Detects the build system (autotools, CMake, Meson, Cargo, Go, Python, Node, `PKGBUILD`, `debian/`), builds, then installs the result natively; on Debian/Ubuntu, Autotools/CMake/Meson/Make builds can be turned into a `.deb` so apt can remove them |
 | `curl … \| sh`, `wget -O …` | Never run as pasted. Downloads the file itself, hashes it, shows it, then classifies it like any other file |
 
 Per-format detail, traps and removal rules: [`development/docs/02-formats.md`](development/docs/02-formats.md).
