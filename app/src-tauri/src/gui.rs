@@ -2,7 +2,7 @@
 use crate::plan::Plan;
 use crate::store::{App, Event, Store};
 use crate::system::{self, System};
-use crate::{analyze, background, catalog, fetch, fix, library, mime, ops, plan, sandbox, transfer, updates, upgrades, util};
+use crate::{analyze, background, catalog, fetch, fix, library, mime, ops, plan, sandbox, transfer, updates, upgrades, util, verify};
 use ops::RunResult;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -225,6 +225,21 @@ async fn import_apps(path: String) -> Result<Vec<transfer::Imported>, String> {
         let path = path.trim();
         let p = path.strip_prefix("~/").map(|r| util::home().join(r)).unwrap_or_else(|| path.into());
         transfer::read(&p, &system::detect())
+    })
+    .await?
+}
+
+/// Check a plan's file against a pasted SHA-256, or a signature or checksum list (link or path). The answer is
+/// recorded on the kept plan: a mismatch makes it refuse to run.
+#[tauri::command]
+async fn verify_plan(plan_id: String, expected: String, state: Shared<'_>) -> Result<Plan, String> {
+    let st = state.inner().clone();
+    blocking(move || {
+        let mut plan = st.plans.lock().map_err(|e| e.to_string())?.get(&plan_id).cloned().ok_or("Unknown plan; analyze again")?;
+        let work = util::cache_dir().join("work").join(&plan.id).join("check");
+        verify::check(&mut plan, &expected, &work, &|_, _| true)?;
+        st.plans.lock().map_err(|e| e.to_string())?.insert(plan_id, plan.clone());
+        Ok(plan)
     })
     .await?
 }
@@ -480,7 +495,7 @@ pub fn run(open: Option<String>) {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![detect_system, analyze, cancel_analyze, flatpak_remotes, remote_remove_plan, store_popular, store_category, store_detail, store_search, store_plan, list_upgrades, hold_update, unhold_update, upgrade_plan, update_app_plan, rollback_plan, fix_plan, take_opened, file_handler, set_file_handler, export_apps, import_apps, sandbox_preview, execute, list_apps, history, scan_system, uninstall_app, leftovers, remove_leftovers, uninstall_system, background_info, set_background, set_badge, update_info, update_check, update_install, update_set_channel, update_skip, open_link])
+        .invoke_handler(tauri::generate_handler![detect_system, analyze, cancel_analyze, flatpak_remotes, remote_remove_plan, store_popular, store_category, store_detail, store_search, store_plan, list_upgrades, hold_update, unhold_update, upgrade_plan, update_app_plan, rollback_plan, fix_plan, take_opened, file_handler, set_file_handler, export_apps, import_apps, verify_plan, sandbox_preview, execute, list_apps, history, scan_system, uninstall_app, leftovers, remove_leftovers, uninstall_system, background_info, set_background, set_badge, update_info, update_check, update_install, update_set_channel, update_skip, open_link])
         .run(tauri::generate_context!())
         .expect("error while running Unpack");
 }

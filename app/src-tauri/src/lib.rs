@@ -22,6 +22,7 @@ pub mod transfer;
 pub mod updates;
 pub mod upgrades;
 pub mod util;
+pub mod verify;
 
 
 #[cfg(feature = "gui")]

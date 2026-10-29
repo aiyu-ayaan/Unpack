@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { AlertTriangle, Box, Check, CheckCircle2, ChevronRight, Copy, FileDown, Info, Loader2, Lock, Package, Play, Sparkles, X, XCircle } from "lucide-react";
+import { AlertTriangle, Box, Check, CheckCircle2, ChevronRight, Copy, FileCheck, FileDown, Info, Loader2, Lock, Package, Play, Sparkles, X, XCircle } from "lucide-react";
 import { api, errText, type Fetched, type LogLine, type Plan, type SandboxReport } from "../api";
 import type { Incoming, Task } from "../App";
 import { Log } from "../components/Log";
@@ -116,7 +116,15 @@ export default function Install({ onInstalled, onTask, incoming, onTaken }: { on
     try { setTrial(await api.sandboxPreview(plan.id)); } catch (e) { setTrial(errText(e)); }
   };
 
-  const reset = () => { setTrial(null); setPhase("idle"); setPlan(null); setError(null); setText(""); setLines([]); };
+  const [expected, setExpected] = useState("");
+  const [checking, setChecking] = useState<string | null>(null);
+  const verify = async () => {
+    if (!plan || !expected.trim()) return;
+    setChecking("…");
+    try { setPlan(await api.verifyPlan(plan.id, expected.trim())); setExpected(""); setChecking(null); } catch (e) { setChecking(errText(e)); }
+  };
+
+  const reset = () => { setTrial(null); setChecking(null); setExpected(""); setPhase("idle"); setPlan(null); setError(null); setText(""); setLines([]); };
   const sudo = error?.match(/^\s+(sudo sh -c .*)$/m)?.[1];
   const copy = (s: string) => { void navigator.clipboard.writeText(s).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }); };
 
@@ -209,6 +217,17 @@ export default function Install({ onInstalled, onTask, incoming, onTaken }: { on
               </button>
               {showPreview && <pre className="enter mt-2 max-h-72 overflow-auto rounded-md border border-line bg-term p-3 font-mono text-xs">{plan.preview}</pre>}
             </div>
+          )}
+
+          {phase === "review" && plan.sha256 && plan.supported && (
+            <form className="flex flex-col gap-2" onSubmit={(e) => { e.preventDefault(); void verify(); }}>
+              <label className="text-xs text-dim" htmlFor="expected">Check it against what the project publishes (optional): paste its SHA-256, or a link to its .sig, .asc or SHA256SUMS file</label>
+              <div className="flex gap-2">
+                <input id="expected" className="input" value={expected} onChange={(e) => setExpected(e.target.value)} placeholder="SHA-256, https://…/app.sig or https://…/SHA256SUMS" spellCheck={false} />
+                <button className="btn shrink-0" disabled={!expected.trim() || checking === "…"}>{checking === "…" ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <FileCheck className="h-4 w-4" aria-hidden />} Check</button>
+              </div>
+              {checking && checking !== "…" && <Banner tone="bad" icon={<XCircle className="h-4 w-4" />}>{checking}</Banner>}
+            </form>
           )}
 
           {phase === "review" && plan.sandbox && (

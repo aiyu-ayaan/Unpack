@@ -42,6 +42,8 @@ Options:
       --root           Run the main step as administrator, when the plan allows it
       --allow-http     Accept a plain http:// link
       --sandbox        With check or install: first try a script in a sandbox (bubblewrap) and show what it did
+      --verify <x>     With check or install: compare with a published SHA-256, or check a signature (.sig,
+                       .asc) or checksum list given as an https:// link or a file; a mismatch stops the install
       --package        With check or install: build source into a system package (.deb, .rpm or Arch) the
                        package manager can remove
       --purge          With remove: also delete leftover settings, cache and data folders
@@ -65,14 +67,17 @@ struct Opts {
     skip: bool,
     notify: bool,
     auto: bool,
+    verify: Option<String>,
     json: bool,
     args: Vec<String>,
 }
 
 fn parse(args: &[String]) -> Result<Opts, String> {
     let mut o = Opts::default();
-    for a in args {
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
         match a.as_str() {
+            "--verify" => o.verify = Some(it.next().ok_or("--verify needs a SHA-256, link or file")?.clone()),
             "-y" | "--yes" => o.yes = true,
             "--root" => o.root = true,
             "--allow-http" => o.http = true,
@@ -374,7 +379,11 @@ fn check(text: &str, o: &Opts) -> Result<Plan, String> {
     if std::io::stderr().is_terminal() {
         eprint!("\r\x1b[K");
     }
-    let plan = plan?;
+    let mut plan = plan?;
+    if let Some(v) = &o.verify {
+        let work = util::cache_dir().join("work").join(&plan.id).join("check");
+        crate::verify::check(&mut plan, v, &work, &progress)?;
+    }
     if o.json {
         json(&plan)?;
     } else {
@@ -662,6 +671,8 @@ mod tests {
         assert!(o.yes && o.purge && o.json && !o.root);
         assert_eq!(o.args, ["file.deb"]);
         assert!(parse(&args(&["--force"])).is_err());
+        assert_eq!(parse(&args(&["x.deb", "--verify", "abc"])).unwrap().verify.as_deref(), Some("abc"));
+        assert!(parse(&args(&["--verify"])).is_err());
         assert_eq!(main(args(&["frobnicate"])), 1);
         assert_eq!(main(args(&["--version"])), 0);
     }

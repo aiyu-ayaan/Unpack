@@ -81,6 +81,9 @@ export const api = {
   /** Saves the installed apps to ~/unpack-apps.json and returns that path. */
   exportApps: () => invoke<string>("export_apps"),
   importApps: (path: string) => invoke<Imported[]>("import_apps", { path }),
+  /** Checks the plan's file against a pasted SHA-256, or a signature / checksum list (https link or path); returns the
+   *  plan with the answer in its advice or warnings, refused on a mismatch. */
+  verifyPlan: (planId: string, expected: string) => invoke<Plan>("verify_plan", { planId, expected }),
   /** Runs a script plan in a bubblewrap sandbox: read-only system, no network, throwaway home. */
   sandboxPreview: (planId: string) => invoke<SandboxReport>("sandbox_preview", { planId }),
   cancelAnalyze: () => invoke<void>("cancel_analyze"),

@@ -135,6 +135,9 @@ Containers: `scripts/test-distros.sh` (CLI build, as root plus a normal user wit
 - [ ] i18n
 - [ ] Disk usage per app
 
+## Safety and trust
+- [x] Checksum or signature: paste a SHA-256, or a `.sig`/`.asc`/`SHA256SUMS` link or path, before installing; a mismatch refuses the plan (Install review, `--verify`)
+
 ## Verification (items marked unverified in docs)
 - [ ] snap `--dangerous` / `--classic` flow
 - [ ] `.flatpakrepo` add syntax
