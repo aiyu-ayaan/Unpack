@@ -94,8 +94,9 @@ CREATE TABLE apps (
   source        TEXT,                -- original input (path, URL, git URL)
   sha256        TEXT,
   installed_at  INTEGER NOT NULL,    -- unix seconds
-  status        TEXT NOT NULL,       -- installed|removed|failed
-  uninstall     TEXT NOT NULL        -- JSON UninstallSpec
+  status        TEXT NOT NULL,       -- installed|removed|updated
+  uninstall     TEXT NOT NULL,       -- JSON UninstallSpec
+  replaced_by   INTEGER              -- v2: the record that replaced this one in an update
 );
 CREATE TABLE events (
   id      INTEGER PRIMARY KEY,
