@@ -109,6 +109,7 @@ Containers: `scripts/test-distros.sh` (CLI build, as root plus a normal user wit
 
 ## M7 — Extra features (ideas)
 - [x] Update checks: every manager's upgradable list, Flatpak, snap, GitHub releases of tracked apps, AppImage `gh-releases-zsync` info (Updates view, `unpack updates` / `unpack upgrade`)
+- [x] Hold an app (never update) or skip one version (Updates view, `unpack hold [--skip]` / `unhold`)
 - [x] Plain `zsync|<url>` AppImage update info (SHA-1 from the `.zsync` header against the installed file; full download)
 - [x] "Fix my install": missing libfuse2, no flatpak/snapd, missing exec bit, missing shared libraries with the providing package per manager (Library > Fix, `unpack fix`)
 - [ ] Verify library providers: `dnf repoquery --whatprovides`, `zypper search --provides`, `pacman -F` (needs `pacman -Fy`), `apk search so:` **(unverified)**

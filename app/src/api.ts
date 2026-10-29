@@ -32,7 +32,7 @@ export type Offer = { version: string; url: string; notes: string | null };
 export type Link = "repo" | "issues" | "developer" | "site";
 export type LogLine = { plan_id: string; stream: string; line: string };
 export type Fetched = { done: number; total: number | null };
-export type Upgrade = { manager: string; name: string; current: string; latest: string; user: boolean; app_id: number | null };
+export type Upgrade = { manager: string; name: string; current: string; latest: string; user: boolean; app_id: number | null; held: boolean };
 export type Way = { type: "store"; source: string; id: string } | { type: "input"; input: string } | { type: "none"; why: string };
 export type Imported = { item: { name: string; kind: string; source: string | null }; way: Way };
 export type SandboxReport = { code: number | null; timed_out: boolean; files: string[]; output: string[] };
@@ -59,6 +59,9 @@ export const api = {
   /** A reviewable plan for a Store entry; the backend checks the id and keeps the plan. */
   storePlan: (source: string, id: string) => invoke<Plan>("store_plan", { source, id }),
   upgrades: () => invoke<Upgrade[]>("list_upgrades"),
+  /** Turn down an update: with `version`, skip only that version; without, never update it. */
+  holdUpdate: (manager: string, name: string, version: string | null) => invoke<void>("hold_update", { manager, name, version }),
+  unholdUpdate: (manager: string, name: string) => invoke<void>("unhold_update", { manager, name }),
   upgradePlan: (picks: { manager: string; name: string; user: boolean }[]) => invoke<Plan>("upgrade_plan", { picks }),
   /** Analyzes the newer release file of tracked app `appId`; installing it replaces the old one. */
   updateAppPlan: (appId: number) => invoke<Plan>("update_app_plan", { appId }),

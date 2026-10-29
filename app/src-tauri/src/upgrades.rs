@@ -21,6 +21,8 @@ pub struct Upgrade {
     pub user: bool,
     /// The Unpack record this belongs to, if any.
     pub app_id: Option<i64>,
+    /// The user said not to update this, or to skip this version (`hold`).
+    pub held: bool,
 }
 
 /// One package the page picked to update, as `list` reported it.
@@ -33,7 +35,30 @@ pub struct Pick {
 }
 
 fn up(manager: &str, name: &str, current: &str, latest: &str) -> Upgrade {
-    Upgrade { manager: manager.into(), name: name.into(), current: current.into(), latest: latest.into(), user: false, app_id: None }
+    Upgrade { manager: manager.into(), name: name.into(), current: current.into(), latest: latest.into(), user: false, app_id: None, held: false }
+}
+
+/// Whether `held` (from the settings) turns down `u`: the app always, or this version of it.
+pub fn is_held(held: &[String], u: &Upgrade) -> bool {
+    let key = format!("{}:{}", u.manager, u.name);
+    held.iter().any(|h| *h == key || h.strip_prefix(&key).and_then(|r| r.strip_prefix('@')) == Some(u.latest.as_str()))
+}
+
+/// Never update `manager:name`, or (with `version`) skip that one version. Replaces what was there for it.
+pub fn hold(manager: &str, name: &str, version: Option<&str>) -> Result<(), String> {
+    let mut s = crate::updates::load();
+    let key = format!("{manager}:{name}");
+    s.held.retain(|h| h != &key && !h.starts_with(&format!("{key}@")));
+    s.held.push(version.map_or(key.clone(), |v| format!("{key}@{v}")));
+    crate::updates::save(&s)
+}
+
+/// Offer updates for `manager:name` again.
+pub fn unhold(manager: &str, name: &str) -> Result<(), String> {
+    let mut s = crate::updates::load();
+    let key = format!("{manager}:{name}");
+    s.held.retain(|h| h != &key && !h.starts_with(&format!("{key}@")));
+    crate::updates::save(&s)
 }
 
 // ---- parsers -----------------------------------------------------------------------------------
@@ -369,6 +394,10 @@ pub fn list(apps: &[App], sys: &System) -> Vec<Upgrade> {
         u.app_id = live.iter().find(|a| matches!(&a.uninstall, Uninstall::Manager { ident, .. } if *ident == u.name)).map(|a| a.id);
     }
     v.extend(downloads.into_iter().map(|(a, (cur, new, _))| Upgrade { app_id: Some(a.id), ..up("download", &a.name, &cur, &new) }));
+    let held = crate::updates::load().held;
+    for u in &mut v {
+        u.held = is_held(&held, u);
+    }
     v.sort_by_key(|u| (u.app_id.is_none(), u.manager.clone(), u.name.to_lowercase()));
     v
 }
@@ -443,6 +472,14 @@ mod tests {
         assert_eq!(parse_snap("Name Version Rev Size Publisher Notes\nvlc 3.0.21 3777 300MB videolan -\n"), vec![up("snap", "vlc", "", "3.0.21")]);
         assert!(parse_flatpak("org.a.A\t1.2\n", true)[0].user);
         assert_eq!(parse_xbps("vlc-3.0.21_2 update x86_64 https://repo-default.voidlinux.org/current 1MB 2MB\nfoo-1_1 install x86_64 r 1 1\n"), vec![up("xbps", "vlc", "", "3.0.21_2")]);
+    }
+
+    #[test]
+    fn holds_an_app_or_one_version() {
+        let u = up("apt", "vlc", "1", "2");
+        assert!(is_held(&["apt:vlc".into()], &u));
+        assert!(is_held(&["apt:vlc@2".into()], &u));
+        assert!(!is_held(&["apt:vlc@3".into(), "snap:vlc".into(), "apt:vlc-bin".into()], &u));
     }
 
     #[test]

@@ -254,6 +254,8 @@ mod tests {
 
     #[test]
     fn missing_file_errors() {
+        // analyze makes a work folder in the cache before it fails; other tests count those.
+        let _g = crate::util::TEST_ENV.lock().unwrap_or_else(|e| e.into_inner());
         assert!(analyze("/no/such/file.deb", &detect(), false, false, &|_, _| true).is_err());
     }
 }

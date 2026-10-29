@@ -73,7 +73,7 @@ export default function App() {
           {NAV.map(({ id, label, icon: Icon }) => {
             const on = view === id;
             const dot = id === "settings" && !!update.offer;
-            const count = id === "updates" ? upgrades?.length ?? 0 : 0;
+            const count = id === "updates" ? upgrades?.filter((u) => !u.held).length ?? 0 : 0;
             return (
               <button key={id} onClick={() => setView(id)} aria-current={on ? "page" : undefined} aria-label={dot ? `${label} (update available)` : count ? `${label} (${count})` : label} title={label}
                 className={`relative grid h-12 w-12 cursor-pointer place-items-center transition-colors ${id === "settings" ? "mt-auto" : ""} ${on ? "text-strong" : "text-dim hover:text-strong"}`}>

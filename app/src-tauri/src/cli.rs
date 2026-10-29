@@ -20,7 +20,9 @@ Commands:
   get <source> <id>    Install one search result (source: flathub, snap, apt, dnf, zypper, pacman, apk, xbps, emerge)
   list                 Apps installed with Unpack (--all: removed ones too)
   updates              What can be updated: system packages, Flatpaks, snaps, and apps from GitHub releases
-  upgrade [name...]    Update those packages (all of them with no names)
+  upgrade [name...]    Update those packages (all of them with no names, except held ones)
+  hold <name>          Never offer updates for it (--skip: only skip the version offered now)
+  unhold <name>        Offer its updates again
   remove <id|name>     Uninstall a tracked app (--purge: also its settings and cache folders), or a package
                        `unpack scan` lists (`manager:name` when two package managers have it)
   fix <id|name>        Find what keeps an app from starting and repair it
@@ -40,6 +42,7 @@ Options:
                        package manager can remove
       --purge          With remove: also delete leftover settings, cache and data folders
       --all            With list: include removed apps
+      --skip           With hold: skip only the version offered now
       --json           Machine-readable output
 
 Exit codes: 0 done, 1 error, 2 the plan can't be run, 3 declined.";
@@ -53,6 +56,7 @@ struct Opts {
     sandbox: bool,
     package: bool,
     all: bool,
+    skip: bool,
     json: bool,
     args: Vec<String>,
 }
@@ -68,6 +72,7 @@ fn parse(args: &[String]) -> Result<Opts, String> {
             "--sandbox" => o.sandbox = true,
             "--package" => o.package = true,
             "--all" => o.all = true,
+            "--skip" => o.skip = true,
             "--json" => o.json = true,
             s if s.starts_with('-') && s.len() > 1 => return Err(format!("unknown option {s}. See `unpack --help`.")),
             _ => o.args.push(a.clone()),
@@ -233,11 +238,30 @@ fn run(args: &[String]) -> Result<i32, String> {
                 println!("Everything is up to date.");
             } else {
                 for u in &all {
-                    println!("{:<9} {:<36} {:<18} -> {}", u.manager, u.name, if u.current.is_empty() { "?" } else { &u.current }, u.latest);
+                    println!("{:<9} {:<36} {:<18} -> {}{}", u.manager, u.name, if u.current.is_empty() { "?" } else { &u.current }, u.latest, if u.held { "  (held)" } else { "" });
                 }
             }
         }
         "upgrade" => return upgrade(&o),
+        "hold" | "unhold" => {
+            let key = o.args.first().ok_or(format!("{cmd} needs a name, as `unpack updates` lists it."))?;
+            let (manager, name) = key.split_once(':').unwrap_or(("", key));
+            let all = upgrades::list(&store()?.into_inner().map_err(|e| e.to_string())?.list()?, &system::detect());
+            let found: Vec<&upgrades::Upgrade> = all.iter().filter(|u| u.name == name && (manager.is_empty() || u.manager == manager)).collect();
+            if cmd == "unhold" {
+                let ms: Vec<String> = if manager.is_empty() { found.iter().map(|u| u.manager.clone()).collect() } else { vec![manager.into()] };
+                for m in &ms {
+                    upgrades::unhold(m, name)?;
+                }
+                println!("{name} will be offered for updates again.");
+            } else {
+                let [u] = found.as_slice() else {
+                    return Err(format!("{key} is not in `unpack updates`, or is there more than once; use manager:name."));
+                };
+                upgrades::hold(&u.manager, &u.name, o.skip.then_some(u.latest.as_str()))?;
+                println!("{}", if o.skip { format!("Skipping {} {}.", u.name, u.latest) } else { format!("{} will not be updated. Undo with `unpack unhold {}`.", u.name, u.name) });
+            }
+        }
         "export" => {
             let path = o.args.first().map(std::path::PathBuf::from).unwrap_or_else(transfer::default_path);
             let n = transfer::write(&store()?.into_inner().map_err(|e| e.to_string())?.list()?, &path)?;
@@ -422,7 +446,7 @@ fn upgrade(o: &Opts) -> Result<i32, String> {
     let db = store()?;
     let apps = db.lock().map_err(|e| e.to_string())?.list()?;
     let all = upgrades::list(&apps, &system::detect());
-    let chosen: Vec<&upgrades::Upgrade> = all.iter().filter(|u| o.args.is_empty() || o.args.iter().any(|a| a == &u.name)).collect();
+    let chosen: Vec<&upgrades::Upgrade> = all.iter().filter(|u| if o.args.is_empty() { !u.held } else { o.args.iter().any(|a| a == &u.name) }).collect();
     if chosen.is_empty() {
         println!("Nothing to update.");
         return Ok(0);

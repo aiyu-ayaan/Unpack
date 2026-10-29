@@ -131,6 +131,17 @@ async fn list_upgrades(state: Shared<'_>) -> Result<Vec<upgrades::Upgrade>, Stri
     blocking(move || upgrades::list(&apps, &system::detect())).await
 }
 
+/// Turn down an update: `version` skips only that version, none means never update it.
+#[tauri::command]
+fn hold_update(manager: String, name: String, version: Option<String>) -> Result<(), String> {
+    upgrades::hold(&manager, &name, version.as_deref())
+}
+
+#[tauri::command]
+fn unhold_update(manager: String, name: String) -> Result<(), String> {
+    upgrades::unhold(&manager, &name)
+}
+
 /// One plan for the packages the page picked from `list_upgrades`.
 #[tauri::command]
 async fn upgrade_plan(picks: Vec<upgrades::Pick>, state: Shared<'_>) -> Result<Plan, String> {
@@ -389,7 +400,7 @@ pub fn run(open: Option<String>) {
             std::thread::spawn(analyze::clean_old_work);
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![detect_system, analyze, cancel_analyze, flatpak_remotes, remote_remove_plan, store_popular, store_category, store_detail, store_search, store_plan, list_upgrades, upgrade_plan, update_app_plan, fix_plan, take_opened, file_handler, set_file_handler, export_apps, import_apps, sandbox_preview, execute, list_apps, history, scan_system, uninstall_app, leftovers, remove_leftovers, uninstall_system, update_info, update_check, update_install, update_set_channel, update_skip, open_link])
+        .invoke_handler(tauri::generate_handler![detect_system, analyze, cancel_analyze, flatpak_remotes, remote_remove_plan, store_popular, store_category, store_detail, store_search, store_plan, list_upgrades, hold_update, unhold_update, upgrade_plan, update_app_plan, fix_plan, take_opened, file_handler, set_file_handler, export_apps, import_apps, sandbox_preview, execute, list_apps, history, scan_system, uninstall_app, leftovers, remove_leftovers, uninstall_system, update_info, update_check, update_install, update_set_channel, update_skip, open_link])
         .run(tauri::generate_context!())
         .expect("error while running Unpack");
 }

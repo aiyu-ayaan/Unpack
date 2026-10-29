@@ -98,12 +98,15 @@ pub fn pick(releases: &[Release], installed: &str, channel: Channel, suffix: &st
     })
 }
 
-// ---- settings (channel, skipped version) -------------------------------------------------------
+// ---- settings (channel, skipped version, held apps) --------------------------------------------
 
 #[derive(Default, Serialize, Deserialize)]
 pub struct Settings {
     pub channel: Option<Channel>,
     pub skipped: Option<String>,
+    /// Updates the user turned down: `manager:name` (never) or `manager:name@version` (not that version).
+    #[serde(default)]
+    pub held: Vec<String>,
 }
 
 fn settings_path() -> PathBuf {
