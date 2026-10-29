@@ -59,17 +59,17 @@ pub fn channel_of(version: &str) -> Channel {
 
 #[derive(Deserialize)]
 pub struct Asset {
-    name: String,
-    browser_download_url: String,
+    pub(crate) name: String,
+    pub(crate) browser_download_url: String,
 }
 
 #[derive(Deserialize)]
 pub struct Release {
-    tag_name: String,
+    pub(crate) tag_name: String,
     #[serde(default)]
     body: Option<String>,
     #[serde(default)]
-    assets: Vec<Asset>,
+    pub(crate) assets: Vec<Asset>,
 }
 
 #[derive(Clone, Serialize, PartialEq, Debug)]

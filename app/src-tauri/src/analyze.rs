@@ -59,7 +59,10 @@ fn analyze_in(text: &str, sys: &System, allow_http: bool, progress: Progress, wo
         }
         Source::Url { url, pipe_to_shell } => {
             let d = fetch::download(&url, work, allow_http, progress)?;
-            from_file(&d.path, sys, work, Meta { source: d.final_url, sha256: Some(d.sha256), pipe_to_shell }, if pipe_to_shell { 100 } else { 0 })
+            // The record keeps the link as given (updates read the project from it) and where it really came from.
+            let mut plan = from_file(&d.path, sys, work, Meta { source: url.clone(), sha256: Some(d.sha256), pipe_to_shell }, if pipe_to_shell { 100 } else { 0 })?;
+            plan.fetched = (d.final_url != url).then_some(d.final_url);
+            Ok(plan)
         }
         Source::Git { url } => from_git(&url, sys, work, Meta { source: url.clone(), sha256: None, pipe_to_shell: false }, progress),
     }

@@ -11,7 +11,7 @@ Unpack installs untrusted software for non-expert users, so the app itself must 
 5. **No shell interpolation.** Commands are `program + args` vectors. When a shell is required (merged root steps), arguments are quoted with `shlex`.
 6. **Untrusted archives.** Reject path traversal, absolute members and escaping symlinks; cap size and member count; extract into a fresh `0700` temp dir.
 7. **Integrity where available.** Verify `.dsc` checksums, show GPG/signature state from the package manager, never silently pass `--allow-untrusted` / `--no-gpg-checks` / `--dangerous` — the UI must state it and the user must accept.
-8. **Download hygiene.** HTTPS only by default (HTTP needs an explicit tick), follow redirects up to a limit, size cap, record final URL and SHA-256.
+8. **Download hygiene.** HTTPS only by default (HTTP needs an explicit tick), follow redirects up to a limit, size cap, record the link as given, the final URL when redirects changed it, and the SHA-256.
 9. **Record everything.** Each install writes an event log row (what ran, exit code, output tail) to SQLite.
 
 ## Threats and mitigations
@@ -48,3 +48,8 @@ An advisory cited in research: PackageKit ≤ 1.1.13 let `InstallFiles`, `GetFil
 - The Store's lists come from Flathub's HTTPS API and local package tools. The page gets `{source, id}` pairs back and sends only those to `store_plan`; the backend rebuilds the command from a fixed template and refuses ids that fail `plan::safe_ident` (no leading `-`, only `A-Za-z0-9+._:@-`).
 - Icons are the only remote content the page loads. The CSP allows images from `https://dl.flathub.org` only, and `catalog.rs` drops any icon URL elsewhere.
 - Flathub installs go to the user installation (`flatpak --user`). Snap and native installs need the admin password.
+
+## Updates
+
+- The page picks updates by `{manager, name, user}` from the backend's own list; `upgrade_plan` checks every name with `safe_ident` and only accepts the system's own native manager, Flatpak and snap.
+- A new release of a tracked app is found by the backend (GitHub API, `safe_ident` on owner, repo and tag) and analyzed like any download: the user reviews the plan, the file is hashed, nothing runs before approval.

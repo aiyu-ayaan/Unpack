@@ -37,7 +37,8 @@ pub fn install(plan: &Plan, as_root: bool, sys: &System, store: &Mutex<Store>, e
                 return Ok(RunResult { ok: true, app_id: None, error: None, notes: o.notes });
             }
             let id = db.add_app(&plan.name, plan.version.as_deref(), &plan.kind, &plan.source, plan.sha256.as_deref(), &o.uninstall)?;
-            db.event(Some(id), "info", &format!("Installed from {}", plan.source));
+            let via = plan.fetched.as_deref().map(|f| format!(" (downloaded from {f})")).unwrap_or_default();
+            db.event(Some(id), "info", &format!("Installed from {}{via}", plan.source));
             for n in &o.notes {
                 db.event(Some(id), "warn", n);
             }

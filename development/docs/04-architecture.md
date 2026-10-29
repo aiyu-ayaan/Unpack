@@ -37,6 +37,7 @@ Unpack/
         trace.rs            filesystem snapshot diff for untracked installers
         store.rs            SQLite schema + queries
         library.rs          scan system package managers for installed software
+        upgrades.rs         what can be updated (each manager's upgradable list, newer GitHub releases of tracked apps, AppImage `.upd_info`) and the update plan
         catalog.rs          Store: Flathub popular/search (HTTPS API) plus native and snap search (local CLIs)
 ```
 
@@ -108,6 +109,9 @@ DB path: `$XDG_DATA_HOME/unpack/unpack.db` (default `~/.local/share/unpack/`). D
 | `analyze(input, allow_http)` | Parse, fetch/clone, sniff, build `Plan`, store it by id; emits `analyze-progress` while downloading |
 | `store_popular()` / `store_search(query)` | Store entries `{source, id, name, summary, icon}`: Flathub's API, plus `apt-cache search`, `dnf repoquery`, `zypper search`, `pacman -Ss`, `apk search`, `snap find` |
 | `store_plan(source, id)` | Build and keep a `Plan` for one entry (`plan::plan_repo`; the id is checked with `safe_ident`); run it with `execute` |
+| `list_upgrades()` | Upgradable packages from apt/dnf/zypper/pacman/apk, Flatpak (user and system) and snap, plus tracked apps whose GitHub release has a newer file; Unpack's own records are marked with `app_id` |
+| `upgrade_plan(picks)` | One `Plan` (kind `update`, records nothing) for picked `{manager, name, user}`; names checked with `safe_ident`, apt refreshes its lists first, Arch always does a full `-Syu` |
+| `update_app_plan(app_id)` | Analyze the newer release file of a tracked app; on success the new record replaces the old one (old files removed, old row `updated`) |
 | `cancel_analyze()` | Stop the running analyze: the call returns `Cancelled` at once, the worker stops at its next check and removes its work folder |
 | `execute(plan_id, as_root)` | Run the stored plan, emit `plan-log`, record app + event in SQLite |
 | `list_apps()` | Tracked apps from SQLite |
@@ -133,12 +137,14 @@ The same binary takes commands: `unpack install file.deb`, `unpack list`, `unpac
 - Scripts, `.run`, `.bin` and source builds are *traced*: snapshot of `~/.local`, `/opt`, `/usr/local` before and after; new files become the `Files` uninstall spec. Limits: files written elsewhere (`/usr/bin`, `/etc`) are not seen; modified existing files are not seen. The runner then reports `Manual` when nothing new was found.
 - `Files` removal only touches `~/.local`, `~/Applications`, `~/Unpacked`, `/opt`, `/usr/local` (`runner::safe_to_remove`). Paths needing root go through one `pkexec rm -rf --`.
 - Native package-recipe builds (`PKGBUILD`, `debian/`, `.dsc`) end in an `InstallBuilt` step: the produced package is planned and installed like a downloaded one, so the package manager owns removal.
+- A downloaded app's record keeps the link as given in `source` (updates read the GitHub project from it); when redirects led elsewhere the plan shows and the install event records the final address.
+- Updates of tracked apps: a `source` of `https://github.com/<owner>/<repo>/releases/download/<tag>/<file>` is compared with the project's latest release, and the replacement file is the one whose name is the old name with the new version, else the one with the same shape (digits ignored). AppImages that carry `gh-releases-zsync|owner|repo|tag|pattern` in their `.upd_info` ELF section are checked the same way. Plain `zsync|<url>` update info is not used yet.
 - Plans keep a SHA-256 of the analysed file; `execute` re-hashes and aborts on mismatch.
 - Work folders live in `~/.cache/unpack/work/<plan-id>`. A failed or cancelled analyze and a successful install remove theirs; anything left (a failed install, kept for a retry) is deleted at the next start once a day old.
 
 ## UI
 
-Views: **Install** (drop zone + input; plan review; live log; also reviews plans other views hand it), **Store** (Flathub's popular apps with icons, search across Flathub, the Snap Store and the distro's repositories, Install opens the plan in Install), **Library** (tracked and system-wide, search, uninstall), **System** (detected distro, managers, missing helpers with one-click bootstrap), **History** (events). VS Code style shell: our own draggable titlebar (native decorations off; minimize / maximize / close through the window API, allowed in `capabilities/default.json`), icon activity bar, tab strip with a 2px progress line, and a status bar with the distro and the running task. Tokens follow VS Code's Dark Modern / Light Modern with a green accent; they are CSS variables in `app/src/index.css` switched by `html[data-theme]` (OS preference by default, toggle saved in `localStorage`). Plain-language sans-serif text; monospace only for commands and the Output panel. Install progress is per step, derived from the runner's `== label ==` log markers. `lucide-react` icons.
+Views: **Install** (drop zone + input; plan review; live log; also reviews plans other views hand it), **Updates** (count badge in the activity bar; apps installed with Unpack first, then the rest; Update all builds one plan), **Store** (Flathub's popular apps with icons, search across Flathub, the Snap Store and the distro's repositories, Install opens the plan in Install), **Library** (tracked and system-wide, search, uninstall), **System** (detected distro, managers, missing helpers with one-click bootstrap), **History** (events). VS Code style shell: our own draggable titlebar (native decorations off; minimize / maximize / close through the window API, allowed in `capabilities/default.json`), icon activity bar, tab strip with a 2px progress line, and a status bar with the distro and the running task. Tokens follow VS Code's Dark Modern / Light Modern with a green accent; they are CSS variables in `app/src/index.css` switched by `html[data-theme]` (OS preference by default, toggle saved in `localStorage`). Plain-language sans-serif text; monospace only for commands and the Output panel. Install progress is per step, derived from the runner's `== label ==` log markers. `lucide-react` icons.
 
 ## Testing
 

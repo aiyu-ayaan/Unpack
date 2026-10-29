@@ -89,7 +89,7 @@ export default function Install({ onInstalled, onTask, incoming, onTaken }: { on
 
   useEffect(() => {
     if (phase === "analyzing") onTask({ label: fetched?.done ? "Downloading…" : "Checking…", progress: fetched?.total ? fetched.done / fetched.total : null });
-    else if (phase === "running" && plan) onTask({ label: waitingRoot ? "Waiting for admin password" : `Installing ${plan.name}`, progress });
+    else if (phase === "running" && plan) onTask({ label: waitingRoot ? "Waiting for admin password" : plan.title, progress });
     else onTask(null);
   }, [phase, plan, progress, waitingRoot, fetched, onTask]);
 
@@ -150,6 +150,7 @@ export default function Install({ onInstalled, onTask, incoming, onTaken }: { on
               <h2 className="truncate text-base font-semibold text-strong">{plan.name}{plan.version && <span className="ml-2 text-sm font-normal text-dim">{plan.version}</span>}</h2>
               <div className="mt-1 flex flex-wrap gap-1.5"><span className="chip">{plan.kind}</span>{plan.needs_root && <span className="chip chip-warn"><Lock className="h-3 w-3" aria-hidden /> Needs admin password</span>}</div>
               <div className="mt-1 truncate text-xs text-dim" title={plan.source}>{plan.source}</div>
+              {plan.fetched && <div className="truncate text-[11px] text-dim" title={plan.fetched}>Downloaded from {plan.fetched}</div>}
               {plan.sha256 && <div className="truncate text-[11px] text-dim" title={plan.sha256}>SHA-256 {plan.sha256.slice(0, 16)}…</div>}
             </div>
             {phase === "review" && <button className="btn btn-ghost px-1.5!" onClick={reset} aria-label="Cancel" title="Cancel"><X className="h-4 w-4" /></button>}
@@ -200,15 +201,15 @@ export default function Install({ onInstalled, onTask, incoming, onTaken }: { on
 
           {waitingRoot && <Banner tone="warn" icon={<Lock className="h-4 w-4" />}>Enter your password in the system prompt to continue. If no window appears, see the message after it fails.</Banner>}
           {phase !== "review" && <Log lines={lines} running={phase === "running"} />}
-          {phase === "done" && <Banner tone="good" icon={<CheckCircle2 className="h-4 w-4" />}>Installed. You can find it in your Library.</Banner>}
+          {phase === "done" && <Banner tone="good" icon={<CheckCircle2 className="h-4 w-4" />}>{plan.kind === "update" || plan.kind === "fix" ? "Done." : "Installed. You can find it in your Library."}</Banner>}
           {phase === "done" && notes.map((n, i) => <Banner key={i} tone="warn" icon={<AlertTriangle className="h-4 w-4" />}>{n}</Banner>)}
           {phase === "failed" && <Banner tone="bad" icon={<XCircle className="h-4 w-4" />}>{error ?? "Install failed"}</Banner>}
           {phase === "failed" && sudo && <button className="btn self-start" onClick={() => copy(sudo)}><Copy className="h-4 w-4" aria-hidden /> {copied ? "Copied" : "Copy terminal command"}</button>}
 
           <div className="flex justify-end gap-2">
-            {phase === "review" && <button className="btn btn-primary" disabled={!plan.supported} onClick={run}><Play className="h-4 w-4" aria-hidden /> Install</button>}
-            {phase === "running" && <button className="btn" disabled><Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Installing…</button>}
-            {(phase === "done" || phase === "failed") && <button className="btn" onClick={reset}>Install something else</button>}
+            {phase === "review" && <button className="btn btn-primary" disabled={!plan.supported} onClick={run}><Play className="h-4 w-4" aria-hidden /> {plan.kind === "update" ? "Update" : plan.kind === "fix" ? "Fix" : "Install"}</button>}
+            {phase === "running" && <button className="btn" disabled><Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Working…</button>}
+            {(phase === "done" || phase === "failed") && <button className="btn" onClick={reset}>Done</button>}
           </div>
         </section>
       )}

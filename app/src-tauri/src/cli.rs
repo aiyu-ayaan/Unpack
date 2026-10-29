@@ -1,7 +1,7 @@
 //! `unpack <command>`: the window's analyze → plan → install flow in a terminal, on the same database.
 use crate::plan::{Plan, Uninstall};
 use crate::store::{App, Store};
-use crate::{analyze, catalog, library, ops, plan as plans, runner, system, updates, util};
+use crate::{analyze, catalog, library, ops, plan as plans, runner, system, updates, upgrades, util};
 use std::io::{IsTerminal, Write};
 use std::sync::Mutex;
 
@@ -17,6 +17,8 @@ Commands:
   search <words>       Find apps on Flathub, the Snap Store and your distro's repositories
   get <source> <id>    Install one search result (source: flathub, snap, apt, dnf, zypper, pacman, apk)
   list                 Apps installed with Unpack (--all: removed ones too)
+  updates              What can be updated: system packages, Flatpaks, snaps, and apps from GitHub releases
+  upgrade [name...]    Update those packages (all of them with no names)
   remove <id|name>     Uninstall a tracked app (--purge: also its settings and cache folders)
   scan                 Every package the system's package managers report
   history [id|name]    What Unpack did, newest first
@@ -155,6 +157,19 @@ fn run(args: &[String]) -> Result<i32, String> {
             }
         }
         "remove" | "uninstall" => return remove(&o),
+        "updates" => {
+            let all = upgrades::list(&store()?.into_inner().map_err(|e| e.to_string())?.list()?, &system::detect());
+            if o.json {
+                json(&all)?;
+            } else if all.is_empty() {
+                println!("Everything is up to date.");
+            } else {
+                for u in &all {
+                    println!("{:<9} {:<36} {:<18} -> {}", u.manager, u.name, if u.current.is_empty() { "?" } else { &u.current }, u.latest);
+                }
+            }
+        }
+        "upgrade" => return upgrade(&o),
         "scan" => {
             let pkgs = library::scan();
             if o.json {
@@ -281,7 +296,7 @@ fn run_plan(plan: Plan, o: &Opts) -> Result<i32, String> {
     if !plan.supported {
         return Ok(2);
     }
-    if !ask(&format!("Install {}?", plan.name), o)? {
+    if !ask(&format!("{}?", plan.title), o)? {
         eprintln!("Nothing was installed.");
         return Ok(3);
     }
@@ -305,6 +320,34 @@ fn run_plan(plan: Plan, o: &Opts) -> Result<i32, String> {
         (None, None) => Ok(0),
         (Some(e), _) => Err(e.clone()),
     }
+}
+
+/// Package updates go in one plan; a newer release file of a tracked app is analyzed and installed in its place.
+fn upgrade(o: &Opts) -> Result<i32, String> {
+    let db = store()?;
+    let apps = db.lock().map_err(|e| e.to_string())?.list()?;
+    let all = upgrades::list(&apps, &system::detect());
+    let chosen: Vec<&upgrades::Upgrade> = all.iter().filter(|u| o.args.is_empty() || o.args.iter().any(|a| a == &u.name)).collect();
+    if chosen.is_empty() {
+        println!("Nothing to update.");
+        return Ok(0);
+    }
+    let picks: Vec<upgrades::Pick> = chosen.iter().filter(|u| u.manager != "download").map(|u| upgrades::Pick { manager: u.manager.clone(), name: u.name.clone(), user: u.user }).collect();
+    let mut code = 0;
+    if !picks.is_empty() {
+        let mut plan = upgrades::plan(&picks, &system::detect());
+        plan.id = analyze::new_id();
+        if o.json { json(&plan)?; } else { show(&plan); }
+        code = run_plan(plan, o)?;
+    }
+    for u in chosen.iter().filter(|u| u.manager == "download") {
+        let app = apps.iter().find(|a| Some(a.id) == u.app_id).ok_or("record vanished")?;
+        let Some((_, _, url)) = upgrades::newer_download(app) else { continue };
+        let mut plan = check(&url, o)?;
+        plan.track = plans::Track::Replace(app.id);
+        code = code.max(run_plan(plan, o)?);
+    }
+    Ok(code)
 }
 
 /// An app by id, or by name when exactly one matches.

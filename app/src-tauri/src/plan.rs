@@ -56,6 +56,8 @@ pub struct Plan {
     pub name: String,
     pub version: Option<String>,
     pub source: String,
+    /// Where a download really came from after redirects, when that differs from `source`.
+    pub fetched: Option<String>,
     pub sha256: Option<String>,
     pub warnings: Vec<String>,
     pub advice: Vec<String>,
@@ -87,6 +89,7 @@ impl Plan {
             name: name.into(),
             version: None,
             source: source.into(),
+            fetched: None,
             sha256: None,
             warnings: vec![],
             advice: vec![],

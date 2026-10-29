@@ -14,6 +14,7 @@ pub mod store;
 pub mod system;
 pub mod trace;
 pub mod updates;
+pub mod upgrades;
 pub mod util;
 
 

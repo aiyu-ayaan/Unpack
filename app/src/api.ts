@@ -4,7 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 export type Step = { label: string; display: string; needs_root: boolean };
 export type Plan = {
   id: string; title: string; kind: string; name: string; version: string | null;
-  source: string; sha256: string | null; warnings: string[]; advice: string[];
+  source: string; fetched: string | null; sha256: string | null; warnings: string[]; advice: string[];
   steps: Step[]; supported: boolean; preview: string | null;
   root_optional: boolean; needs_root: boolean;
 };
@@ -31,6 +31,7 @@ export type Offer = { version: string; url: string; notes: string | null };
 export type Link = "repo" | "issues" | "developer" | "site";
 export type LogLine = { plan_id: string; stream: string; line: string };
 export type Fetched = { done: number; total: number | null };
+export type Upgrade = { manager: string; name: string; current: string; latest: string; user: boolean; app_id: number | null };
 export type Entry = { source: string; id: string; name: string; summary: string; icon: string | null };
 
 export const api = {
@@ -40,6 +41,10 @@ export const api = {
   storeSearch: (query: string) => invoke<Entry[]>("store_search", { query }),
   /** A reviewable plan for a Store entry; the backend checks the id and keeps the plan. */
   storePlan: (source: string, id: string) => invoke<Plan>("store_plan", { source, id }),
+  upgrades: () => invoke<Upgrade[]>("list_upgrades"),
+  upgradePlan: (picks: { manager: string; name: string; user: boolean }[]) => invoke<Plan>("upgrade_plan", { picks }),
+  /** Analyzes the newer release file of tracked app `appId`; installing it replaces the old one. */
+  updateAppPlan: (appId: number) => invoke<Plan>("update_app_plan", { appId }),
   cancelAnalyze: () => invoke<void>("cancel_analyze"),
   onAnalyzeProgress: (fn: (p: Fetched) => void) => listen<Fetched>("analyze-progress", (e) => fn(e.payload)),
   execute: (planId: string, asRoot: boolean) => invoke<RunResult>("execute", { planId, asRoot }),
