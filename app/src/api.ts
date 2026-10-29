@@ -22,6 +22,8 @@ export type Uninstall =
 export type App = {
   id: number; name: string; version: string | null; kind: string; source: string | null;
   sha256: string | null; installed_at: number; status: string; uninstall: Uninstall;
+  /** The record that replaced this one in an update. */
+  replaced_by: number | null;
 };
 export type SysPkg = { name: string; version: string; manager: string };
 export type Event = { ts: number; level: string; message: string };
@@ -66,6 +68,8 @@ export const api = {
   upgradePlan: (picks: { manager: string; name: string; user: boolean }[]) => invoke<Plan>("upgrade_plan", { picks }),
   /** Analyzes the newer release file of tracked app `appId`; installing it replaces the old one. */
   updateAppPlan: (appId: number) => invoke<Plan>("update_app_plan", { appId }),
+  /** Reinstalls the version tracked app `appId` had before Unpack updated it. */
+  rollbackPlan: (appId: number) => invoke<Plan>("rollback_plan", { appId }),
   /** Repair plan for a tracked app; unsupported with advice when nothing is wrong. */
   fixPlan: (appId: number) => invoke<Plan>("fix_plan", { appId }),
   /** The file the window was opened with ("Open with Unpack"), once. */

@@ -169,6 +169,22 @@ async fn update_app_plan(app_id: i64, app: AppHandle, state: Shared<'_>) -> Resu
     Ok(plan)
 }
 
+/// Go back to the version a tracked app had before Unpack updated it (download progress as `analyze-progress`).
+#[tauri::command]
+async fn rollback_plan(app_id: i64, app: AppHandle, state: Shared<'_>) -> Result<Plan, String> {
+    let st = state.inner().clone();
+    let plan = blocking(move || {
+        let progress = |done: u64, total: Option<u64>| {
+            let _ = app.emit("analyze-progress", Fetched { done, total });
+            true
+        };
+        ops::rollback_plan(app_id, &system::detect(), &st.store, &progress)
+    })
+    .await??;
+    state.plans.lock().map_err(|e| e.to_string())?.insert(plan.id.clone(), plan.clone());
+    Ok(plan)
+}
+
 /// What keeps a tracked app from starting, as a plan to review (unsupported with advice when nothing is wrong).
 #[tauri::command]
 async fn fix_plan(app_id: i64, state: Shared<'_>) -> Result<Plan, String> {
@@ -464,7 +480,7 @@ pub fn run(open: Option<String>) {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![detect_system, analyze, cancel_analyze, flatpak_remotes, remote_remove_plan, store_popular, store_category, store_detail, store_search, store_plan, list_upgrades, hold_update, unhold_update, upgrade_plan, update_app_plan, fix_plan, take_opened, file_handler, set_file_handler, export_apps, import_apps, sandbox_preview, execute, list_apps, history, scan_system, uninstall_app, leftovers, remove_leftovers, uninstall_system, background_info, set_background, set_badge, update_info, update_check, update_install, update_set_channel, update_skip, open_link])
+        .invoke_handler(tauri::generate_handler![detect_system, analyze, cancel_analyze, flatpak_remotes, remote_remove_plan, store_popular, store_category, store_detail, store_search, store_plan, list_upgrades, hold_update, unhold_update, upgrade_plan, update_app_plan, rollback_plan, fix_plan, take_opened, file_handler, set_file_handler, export_apps, import_apps, sandbox_preview, execute, list_apps, history, scan_system, uninstall_app, leftovers, remove_leftovers, uninstall_system, background_info, set_background, set_badge, update_info, update_check, update_install, update_set_channel, update_skip, open_link])
         .run(tauri::generate_context!())
         .expect("error while running Unpack");
 }

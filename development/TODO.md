@@ -112,6 +112,8 @@ Containers: `scripts/test-distros.sh` (CLI build, as root plus a normal user wit
 - [x] Background update check (systemd user timer or autostart) with a desktop notification; tray icon with the waiting count while the window is open
 - [x] Opt-in auto-update of updates that need no admin password and carry no warning (user Flatpaks, release downloads in home)
 - [ ] Verify the timer, notification and tray badge on GNOME and KDE **(unverified)**
+- [x] Rollback: undo the last update of an app Unpack updated (reinstall the version before from its source; Library > Undo update, `unpack rollback`). Undoing an install is Remove (file trace)
+- [ ] Rollback for package-manager and Flatpak updates (`apt install pkg=old`, `dnf downgrade`, `flatpak update --commit`)
 - [x] Hold an app (never update) or skip one version (Updates view, `unpack hold [--skip]` / `unhold`)
 - [x] Plain `zsync|<url>` AppImage update info (SHA-1 from the `.zsync` header against the installed file; full download)
 - [x] "Fix my install": missing libfuse2, no flatpak/snapd, missing exec bit, missing shared libraries with the providing package per manager (Library > Fix, `unpack fix`)

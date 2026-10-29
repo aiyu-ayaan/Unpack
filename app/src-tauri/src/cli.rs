@@ -29,6 +29,7 @@ Commands:
   remove <id|name>     Uninstall a tracked app (--purge: also its settings and cache folders), or a package
                        `unpack scan` lists (`manager:name` when two package managers have it)
   fix <id|name>        Find what keeps an app from starting and repair it
+  rollback <id|name>   Undo the last update Unpack made to an app: reinstall the version before it
   export [file]        Save the list of installed apps (default ~/unpack-apps.json) to take to another computer
   import <file>        Install the apps of an exported list again, asking for each
   scan                 Every package the system's package managers report
@@ -294,6 +295,18 @@ fn run(args: &[String]) -> Result<i32, String> {
             println!("Saved {n} apps to {}.", path.display());
         }
         "import" => return import(&o),
+        "rollback" => {
+            let key = o.args.first().ok_or("rollback needs an app id or name. See `unpack list`.")?;
+            let db = store()?;
+            let app = find(&*db.lock().map_err(|e| e.to_string())?, key, false)?;
+            let plan = ops::rollback_plan(app.id, &system::detect(), &db, &progress);
+            if std::io::stderr().is_terminal() {
+                eprint!("\r\x1b[K");
+            }
+            let plan = plan?;
+            if o.json { json(&plan)?; } else { show(&plan); }
+            return run_plan(plan, &o);
+        }
         "fix" => {
             let key = o.args.first().ok_or("fix needs an app id or name. See `unpack list`.")?;
             let app = find(&store()?.into_inner().map_err(|e| e.to_string())?, key, false)?;

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { FolderX, Loader2, RefreshCw, Search, Trash2, Wrench, XCircle } from "lucide-react";
-import { api, errText, when, type App, type LogLine, type SysPkg } from "../api";
+import { FolderX, Loader2, RefreshCw, Search, Trash2, Undo2, Wrench, XCircle } from "lucide-react";
+import { api, errText, when, type App, type LogLine, type Plan, type SysPkg } from "../api";
 import type { Incoming, Task } from "../App";
 import { Log } from "../components/Log";
 import { Banner, Empty, PageHeader, Progress } from "../components/ui";
@@ -53,11 +53,15 @@ export default function Library({ version, onTask, onReview }: { version: number
     setBusy(null); onTask(null);
   };
 
-  const fix = async (a: App) => {
-    setBusy(`fix${a.id}`); setMsg(null);
-    try { onReview({ plan: await api.fixPlan(a.id) }); } catch (e) { setMsg(errText(e)); }
+  const review = async (key: string, make: () => Promise<Plan>) => {
+    setBusy(key); setMsg(null);
+    try { onReview({ plan: await make() }); } catch (e) { setMsg(errText(e)); }
     setBusy(null);
   };
+  const fix = (a: App) => review(`fix${a.id}`, () => api.fixPlan(a.id));
+  const rollback = (a: App) => review(`back${a.id}`, () => api.rollbackPlan(a.id));
+  /** Apps Unpack updated, which can go back to the version before. */
+  const updated = useMemo(() => new Set(apps.flatMap((a) => a.replaced_by === null ? [] : [a.replaced_by])), [apps]);
 
   const ql = q.toLowerCase();
   const tracked = useMemo(() => apps.filter((a) => a.status === "installed" && a.name.toLowerCase().includes(ql)), [apps, ql]);
@@ -94,13 +98,15 @@ export default function Library({ version, onTask, onReview }: { version: number
           </div>
         </Banner>
       )}
-      {busy && !busy.startsWith("fix") && <><Progress value={null} label="Removing" /><Log lines={log} running /></>}
+      {busy && !busy.startsWith("fix") && !busy.startsWith("back") && <><Progress value={null} label="Removing" /><Log lines={log} running /></>}
 
       <div className="card divide-y divide-line overflow-hidden">
         {tab === "tracked" && <div className="stagger divide-y divide-line">{tracked.map((a) => (
           <Row key={a.id} title={a.name} sub={`${a.version ?? ""} ${a.kind} · ${when(a.installed_at)}`.trim()} status={a.status}
             how={a.uninstall.type === "manager" ? `via ${a.uninstall.manager}` : a.uninstall.type === "files" ? `${a.uninstall.paths.length} files tracked` : a.uninstall.type === "manual" ? "remove manually" : a.uninstall.type === "container" ? `in container ${a.uninstall.container}` : ""}
             action={a.status === "installed" && <span className="flex gap-1">
+              {updated.has(a.id) && <button className="btn btn-ghost" disabled={busy !== null} onClick={() => void rollback(a)} title="Go back to the version before the last update">
+                {busy === `back${a.id}` ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Undo2 className="h-4 w-4" aria-hidden />} Undo update</button>}
               <button className="btn btn-ghost" disabled={busy !== null} onClick={() => void fix(a)} title="Find and repair what keeps it from starting">
                 {busy === `fix${a.id}` ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Wrench className="h-4 w-4" aria-hidden />} Fix</button>
               {a.uninstall.type !== "manual" && <Remove id={`a${a.id}`} busy={busy} confirm={confirm} setConfirm={setConfirm} run={() => remove(`a${a.id}`, a.name, () => api.uninstall(a.id), true)} />}

@@ -114,7 +114,7 @@ mod tests {
         sys.native = Some(Native::Apt);
         let d = tempfile::tempdir().unwrap();
         let f = d.path().join("l.json");
-        let apps = vec![App { id: 1, name: "VLC".into(), version: None, kind: "flathub".into(), source: Some("flathub:org.videolan.VLC".into()), sha256: None, installed_at: 0, status: "installed".into(), uninstall: Uninstall::Manager { manager: "flatpak".into(), ident: "org.videolan.VLC".into(), user: true } }];
+        let apps = vec![App { id: 1, name: "VLC".into(), version: None, kind: "flathub".into(), source: Some("flathub:org.videolan.VLC".into()), sha256: None, installed_at: 0, status: "installed".into(), replaced_by: None, uninstall: Uninstall::Manager { manager: "flatpak".into(), ident: "org.videolan.VLC".into(), user: true } }];
         assert_eq!(write(&apps, &f).unwrap(), 1);
         let back = read(&f, &sys).unwrap();
         assert_eq!(back[0].way, Way::Store { source: "flathub".into(), id: "org.videolan.VLC".into() });

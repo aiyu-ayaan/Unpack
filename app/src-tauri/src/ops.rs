@@ -47,7 +47,7 @@ pub fn install(plan: &Plan, as_root: bool, sys: &System, store: &Mutex<Store>, e
                 drop(db);
                 replace_old(&rec, &o.uninstall, sys, emit);
                 let db = lock(store)?;
-                db.set_status(old, "updated")?;
+                db.set_replaced(old, id)?;
                 db.event(Some(old), "info", &format!("Updated: replaced by app {id}"));
             }
             RunResult { ok: true, app_id: Some(id), error: None, notes: o.notes }
@@ -96,6 +96,21 @@ pub fn uninstall_system(manager: &str, ident: &str, sys: &System, emit: Emit) ->
     let user = manager == "flatpak";
     let r = runner::uninstall(&Uninstall::Manager { manager: manager.into(), ident: ident.into(), user }, sys, emit);
     RunResult { ok: r.is_ok(), app_id: None, error: r.err(), notes: vec![] }
+}
+
+/// Undo an update Unpack made: analyze the older version's recorded source again; installing that plan replaces
+/// the newer record. The older file may be a download (fetched again) or a local file that is still there.
+pub fn rollback_plan(app_id: i64, sys: &System, store: &Mutex<Store>, progress: crate::fetch::Progress) -> Result<Plan, String> {
+    let (new, old) = {
+        let db = lock(store)?;
+        (db.get(app_id)?, db.predecessor(app_id)?.ok_or("Unpack did not update this app, so there is no older version to go back to.")?)
+    };
+    let src = old.source.as_deref().filter(|s| !s.is_empty()).ok_or("Where the older version came from was not recorded.")?;
+    let mut plan = crate::analyze::analyze(src, sys, false, false, progress).map_err(|e| format!("Could not get the older version back ({src}): {e}"))?;
+    plan.track = Track::Replace(new.id);
+    plan.title = format!("Roll back {} to {}", new.name, old.version.as_deref().unwrap_or("the previous version"));
+    plan.warnings.insert(0, format!("This puts back the version you had before the update{}. Skip the newer version in Updates if you don't want it offered again.", old.version.as_deref().map(|v| format!(" ({v})")).unwrap_or_default()));
+    Ok(plan)
 }
 
 // ------------------------------------------------------------ leftovers

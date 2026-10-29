@@ -78,7 +78,7 @@ mod tests {
         let f = d.path().join("tool");
         std::fs::write(&f, "#!/bin/sh\necho hi\n").unwrap();
         std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o644)).unwrap();
-        let app = App { id: 1, name: "tool".into(), version: None, kind: "x".into(), source: None, sha256: None, installed_at: 0, status: "installed".into(), uninstall: Uninstall::Files { paths: vec![f.to_string_lossy().into()] } };
+        let app = App { id: 1, name: "tool".into(), version: None, kind: "x".into(), source: None, sha256: None, installed_at: 0, status: "installed".into(), replaced_by: None, uninstall: Uninstall::Files { paths: vec![f.to_string_lossy().into()] } };
         let p = plan(&app, &crate::system::detect());
         assert!(p.steps.iter().any(|s| s.display.starts_with("chmod +x --")), "{:?}", p.steps);
         std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o755)).unwrap();
