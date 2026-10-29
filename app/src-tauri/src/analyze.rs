@@ -76,6 +76,25 @@ fn from_file(path: &Path, sys: &System, work: &Path, meta: Meta, depth: u32) -> 
     if depth > 3 {
         return Err("Archive is nested too deeply".into());
     }
+    // One part of a Debian source package: open the .dsc next to it, which names every part.
+    let part = path.file_name().filter(|_| depth == 0).and_then(|n| debian_part(&n.to_string_lossy()));
+    if let Some((upstream, debian)) = &part {
+        if let Some(dsc) = sibling_dsc(path, upstream) {
+            let sha = fetch::sha256_file(&dsc).map_err(|e| e.to_string())?;
+            let mut plan = from_file(&dsc, sys, work, Meta { source: dsc.display().to_string(), sha256: Some(sha), ..meta }, 1)?;
+            let n = dsc.file_name().unwrap_or_default().to_string_lossy();
+            plan.advice.insert(0, format!("This file is one part of a Debian source package. Unpack opened {n} next to it, which lists every part."));
+            return Ok(plan);
+        }
+        if *debian {
+            let mut p = Plan::new("dsc", &plan::file_stem(path), &meta.source);
+            p.refuse(
+                "This is only the Debian packaging part of a source package, not something to install by itself.",
+                &["Download the package's .dsc file and the .orig.tar file it lists into the same folder, then open the .dsc."],
+            );
+            return Ok(p);
+        }
+    }
     let mut kind = sniff(path).map_err(|e| e.to_string())?;
     if kind == Kind::Unknown && force_script {
         kind = Kind::Script;
@@ -109,7 +128,37 @@ fn from_file(path: &Path, sys: &System, work: &Path, meta: Meta, depth: u32) -> 
         k => plan::build(&Input::Package { path: path.to_path_buf(), kind: k }, sys, &meta),
     };
     plan.verify = verify;
+    if part.is_some() && plan.supported {
+        plan.warnings.push("This is the upstream source of a Debian source package. Unpack will build it as plain source; to build the Debian package instead, put its .dsc and .debian.tar file next to it and open the .dsc.".into());
+    }
     Ok(plan)
+}
+
+/// `(name_upstreamversion, is_debian_tar)` for a part of a Debian source package: `foo_1.2.orig.tar.gz`,
+/// `foo_1.2.orig-docs.tar.xz` or `foo_1.2-3.debian.tar.xz` (whose .dsc is `foo_1.2-3.dsc`).
+pub fn debian_part(name: &str) -> Option<(String, bool)> {
+    let (stem, debian) = match (name.find(".orig.tar.").or_else(|| name.find(".orig-").filter(|_| name.contains(".tar."))), name.find(".debian.tar.")) {
+        (Some(i), _) => (&name[..i], false),
+        (None, Some(i)) => (&name[..i], true),
+        _ => return None,
+    };
+    if !stem.contains('_') {
+        return None;
+    }
+    let upstream = if debian { stem.rsplit_once('-').map_or(stem, |x| x.0) } else { stem };
+    Some((upstream.to_string(), debian))
+}
+
+/// The newest `.dsc` beside `path` for that upstream version (`foo_1.2-3.dsc` for `foo_1.2`).
+fn sibling_dsc(path: &Path, upstream: &str) -> Option<PathBuf> {
+    let mut found: Vec<PathBuf> = std::fs::read_dir(path.parent()?)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()).is_some_and(|n| n.ends_with(".dsc") && n.strip_prefix(upstream).is_some_and(|r| r.starts_with(['-', '.']))))
+        .collect();
+    found.sort();
+    found.pop()
 }
 
 fn from_git(url: &str, sys: &System, work: &Path, meta: Meta, progress: Progress) -> Result<Plan, String> {
@@ -183,6 +232,24 @@ mod tests {
         std::fs::write(&f, "#!/bin/sh\necho hi\n").unwrap();
         assert_eq!(analyze(&f.to_string_lossy(), &detect(), false, false, &|_, _| false).unwrap_err(), CANCELLED);
         assert_eq!(std::fs::read_dir(cache_dir().join("work")).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn debian_source_parts() {
+        assert_eq!(debian_part("foo_1.2.orig.tar.gz"), Some(("foo_1.2".into(), false)));
+        assert_eq!(debian_part("foo_1.2.orig-docs.tar.xz"), Some(("foo_1.2".into(), false)));
+        assert_eq!(debian_part("foo_1.2-3.debian.tar.xz"), Some(("foo_1.2".into(), true)));
+        assert_eq!(debian_part("foo-1.2.tar.gz"), None);
+        let _g = crate::util::TEST_ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let d = tempfile::tempdir().unwrap();
+        std::env::set_var("XDG_CACHE_HOME", d.path().join("cache"));
+        let deb = d.path().join("foo_1.2-3.debian.tar.xz");
+        std::fs::write(&deb, "x").unwrap();
+        let p = analyze(&deb.to_string_lossy(), &detect(), false, false, &|_, _| true).unwrap();
+        assert!(!p.supported && p.advice[0].contains(".dsc"));
+        std::fs::write(d.path().join("foo_1.2-3.dsc"), "Source: foo\nVersion: 1.2-3\n").unwrap();
+        let p = analyze(&deb.to_string_lossy(), &detect(), false, false, &|_, _| true).unwrap();
+        assert_eq!((p.kind.as_str(), p.name.as_str()), ("dsc", "foo"));
     }
 
     #[test]

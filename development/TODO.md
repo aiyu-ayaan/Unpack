@@ -75,7 +75,7 @@ Status: all code paths below exist and are unit-tested for planning/parsing. `[~
 - [~] Portable-app archive install (`~/.local/opt`, symlink, .desktop)
 - [~] Source: source archive build recipes (autotools, CMake, Meson, Cargo, Go, Python, Node)
 - [~] Source: `.dsc` (+ checksum verify, build-dep, dpkg-buildpackage)
-- [ ] Source: `.orig.tar.*` / `.debian.tar.*` pairing warning (bare file currently shows 'unrecognised')
+- [x] Source: `.orig.tar.*` / `.debian.tar.*` pairing: opens the `.dsc` beside it; a bare `.debian.tar` is refused with advice; a bare `.orig.tar` builds as plain source with a warning
 - [~] Source: git URL (clone, detect, build; PKGBUILD / debian/ / .spec preferred)
 - [~] curl / wget command input end to end
 
@@ -138,7 +138,7 @@ Containers: `scripts/test-distros.sh` (CLI build, as root plus a normal user wit
 - [~] Work folders: removed after a failed/cancelled analyze and a successful install; a failed install keeps its folder until the next startup cleanup
 - [ ] Trace snapshot walks all of `~/.local` (slow if it holds a lot of data)
 - [x] Uninstall of leftover config/cache dirs (matched by app name and flatpak id only)
-- [ ] Bare `.orig.tar.gz` / `.debian.tar.xz` handling
+- [x] Bare `.orig.tar.gz` / `.debian.tar.xz` handling
 - [ ] System-wide uninstall list shows libraries on dnf/zypper (no "user-installed" filter for zypper)
 - [x] **Bug (fixed):** the AppImage passes its own `LD_LIBRARY_PATH` (bundled `liblzma`, `libzstd`, `libbz2`, …) to every command it runs. `dpkg-deb` then fails (`version 'XZ_5.4' not found`), `capture()` errors are swallowed by `unwrap_or_default()`, and a `.deb` is tracked under its file name instead of its package name with no version. Found installing `Ghost-Downloader-v4.4.5-Linux-x86_64.deb`: stored ident `Ghost-Downloader-v4.4.5-Linux-x86_64` instead of `ghost-downloader`, so Library > Remove fails (`apt` exit 100). Fix: drop `LD_LIBRARY_PATH` (and `APPDIR`-derived variables) in `util::capture` and the runner; do not default silently when `dpkg-deb`/`rpm` fail, refuse or warn instead
 - [x] **Bug (fixed, checks apt/rpm/pacman/apk installs):** an install can report "Installed" for an app that cannot start. Ghost Downloader's `.deb` declares no `Depends`, so `apt` did not pull `libxcb-cursor0`; the app dies with `Could not load the Qt platform plugin "xcb"` and the menu entry does nothing. Fix: after a native install, run `ldd` over the package's ELF files (`dpkg -L` / `rpm -ql`) and show missing libraries (`libxcb-cursor.so.0 => not found`) with the package that provides them and a one-click install ("Fix my install", M7)
