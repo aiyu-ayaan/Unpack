@@ -66,6 +66,12 @@ export default function Library({ version, onTask, onReview }: { version: number
   const ql = q.toLowerCase();
   const tracked = useMemo(() => apps.filter((a) => a.status === "installed" && a.name.toLowerCase().includes(ql)), [apps, ql]);
   const system = useMemo(() => (sys ?? []).filter((p) => p.name.toLowerCase().includes(ql)), [sys, ql]);
+  /** The same app installed with more than one package manager: `vlc` from apt and `org.videolan.VLC` from Flathub. */
+  const twins = useMemo(() => {
+    const by = new Map<string, Set<string>>();
+    for (const p of sys ?? []) { const k = appKey(p); by.set(k, (by.get(k) ?? new Set()).add(p.manager)); }
+    return by;
+  }, [sys]);
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-5">
@@ -115,7 +121,8 @@ export default function Library({ version, onTask, onReview }: { version: number
         {tab === "tracked" && tracked.length === 0 && <Empty>Nothing here yet. Install something and it will show up.</Empty>}
         {tab === "system" && sys === null && <div className="flex flex-col gap-3 px-5 py-8"><Progress value={null} label="Scanning packages" /><div className="text-center text-dim">Looking for installed packages…</div></div>}
         {tab === "system" && system.map((p) => (
-          <Row key={`${p.manager}:${p.name}`} title={p.name} sub={p.version} status={p.manager} how=""
+          <Row key={`${p.manager}:${p.name}`} title={p.name} sub={p.version} status={p.manager}
+            how={[...(twins.get(appKey(p)) ?? [])].filter((m) => m !== p.manager).map((m) => `also installed with ${m}`).join(", ")}
             action={<Remove id={`${p.manager}:${p.name}`} busy={busy} confirm={confirm} setConfirm={setConfirm} run={() => remove(`${p.manager}:${p.name}`, p.name, () => api.uninstallSystem(p.manager, p.name))} />} />
         ))}
         {tab === "system" && sys !== null && system.length === 0 && <Empty>No packages found.</Empty>}
@@ -123,6 +130,8 @@ export default function Library({ version, onTask, onReview }: { version: number
     </div>
   );
 }
+
+const appKey = (p: SysPkg) => (p.manager === "flatpak" ? p.name.split(".").pop() ?? p.name : p.name).toLowerCase();
 
 function Row({ title, sub, status, how, action }: { title: string; sub: string; status: string; how: string; action: React.ReactNode }) {
   return (

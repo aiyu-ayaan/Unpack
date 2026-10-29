@@ -44,6 +44,7 @@ pub fn analyze(text: &str, sys: &System, allow_http: bool, as_package: bool, pro
         Ok(mut plan) => {
             plan.id = id;
             crate::deps::preview(&mut plan);
+            crate::library::duplicate_warning(&mut plan, sys);
             Ok(plan)
         }
         Err(e) => {

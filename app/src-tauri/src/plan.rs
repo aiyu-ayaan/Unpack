@@ -1154,6 +1154,7 @@ pub fn plan_repo(source: &str, ident: &str, sys: &System) -> Plan {
     }
     read_only_base(&mut p, sys);
     crate::deps::preview(&mut p);
+    crate::library::duplicate_warning(&mut p, sys);
     p
 }
 

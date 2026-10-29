@@ -88,6 +88,61 @@ pub fn scan() -> Vec<SysPkg> {
     all
 }
 
+/// What an app is called across formats: `org.videolan.VLC` and the `vlc` package are both `vlc`.
+pub fn app_key(manager: &str, ident: &str) -> String {
+    let base = if manager == "flatpak" { ident.rsplit('.').next().unwrap_or(ident) } else { ident };
+    base.to_lowercase()
+}
+
+/// Whether the native package manager has `name` installed.
+fn native_has(native: crate::system::Native, name: &str) -> bool {
+    use crate::system::Native;
+    match native {
+        Native::Apt => capture("dpkg-query", &["-W", "-f", "${Status}", name]).is_ok_and(|s| s.ends_with(" installed")),
+        Native::Dnf | Native::Zypper => capture("rpm", &["-q", name]).is_ok(),
+        Native::Pacman => capture("pacman", &["-Q", name]).is_ok(),
+        Native::Apk => capture("apk", &["info", "-e", name]).is_ok_and(|o| !o.trim().is_empty()),
+        Native::Xbps => capture("xbps-query", &[name]).is_ok(),
+        Native::Portage => false,
+    }
+}
+
+/// The other formats the app `ident` (installed with `manager`) is already installed as, in words.
+pub fn installed_elsewhere(manager: &str, ident: &str, sys: &crate::system::System) -> Vec<String> {
+    let key = app_key(manager, ident);
+    if key.len() < 2 || !crate::plan::safe_ident(&key) {
+        return vec![];
+    }
+    let mut found = vec![];
+    if manager != "flatpak" && has("flatpak") {
+        let apps = capture("flatpak", &["list", "--app", "--columns=application"]).unwrap_or_default();
+        if apps.lines().any(|a| app_key("flatpak", a.trim()) == key) {
+            found.push("a Flatpak".to_string());
+        }
+    }
+    if manager != "snap" && has("snap") && capture("snap", &["list", &key]).is_ok() {
+        found.push("a snap".into());
+    }
+    if let Some(n) = sys.native.filter(|n| crate::plan::manager_name(*n) != manager) {
+        if native_has(n, &key) {
+            found.push(format!("a system package ({})", crate::plan::manager_name(n)));
+        }
+    }
+    found
+}
+
+/// Warn when the app a plan installs is already here in another format.
+pub fn duplicate_warning(plan: &mut crate::plan::Plan, sys: &crate::system::System) {
+    let crate::plan::Uninstall::Manager { manager, ident, .. } = &plan.uninstall else { return };
+    if !plan.supported || plan.track == crate::plan::Track::Nothing {
+        return;
+    }
+    let other = installed_elsewhere(manager, ident, sys);
+    if !other.is_empty() {
+        plan.warnings.push(format!("{} is already installed as {}. Two copies take twice the space and both show up in your menu; you can remove one in the Library.", plan.name, other.join(" and ")));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -98,5 +153,7 @@ mod tests {
         assert_eq!(s, vec![pkg("snap", "vlc", "3.0")]);
         assert_eq!(parse_pacman("firefox 130.0-1\n"), vec![pkg("pacman", "firefox", "130.0-1")]);
         assert_eq!(tabbed("apt", "a\t1\n\nb\n"), vec![pkg("apt", "a", "1"), pkg("apt", "b", "")]);
+        assert_eq!(app_key("flatpak", "org.videolan.VLC"), "vlc");
+        assert_eq!(app_key("apt", "VLC"), "vlc");
     }
 }
