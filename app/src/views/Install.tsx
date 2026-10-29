@@ -115,7 +115,9 @@ export default function Install({ onInstalled, onTask, incoming, onTaken }: { on
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-5">
-      <PageHeader title="Install an app" sub="Drop a file, or paste a link, download command or git address. Unpack works out the rest." />
+      {plan && phase !== "idle" && phase !== "analyzing"
+        ? <PageHeader title={plan.kind === "update" ? "Update" : plan.kind === "fix" ? "Fix an app" : "Install an app"} sub="Review what will happen, then go ahead." />
+        : <PageHeader title="Install an app" sub="Drop a file, or paste a link, download command or git address. Unpack works out the rest." />}
 
       {(phase === "idle" || phase === "analyzing") && (
         <section className={"card enter p-5"}>
