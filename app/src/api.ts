@@ -54,6 +54,8 @@ export const api = {
   fixPlan: (appId: number) => invoke<Plan>("fix_plan", { appId }),
   /** The file the window was opened with ("Open with Unpack"), once. */
   takeOpened: () => invoke<string | null>("take_opened"),
+  /** Another "Open with Unpack" handed a file to this window; take it with `takeOpened`. */
+  onOpened: (fn: () => void) => listen("opened", () => fn()),
   fileHandler: () => invoke<boolean>("file_handler"),
   setFileHandler: (on: boolean) => invoke<void>("set_file_handler", { on }),
   /** Saves the installed apps to ~/unpack-apps.json and returns that path. */

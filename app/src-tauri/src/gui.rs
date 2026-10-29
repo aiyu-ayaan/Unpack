@@ -345,10 +345,22 @@ fn open_link(which: String) -> Result<(), String> {
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
-/// shortcut: a second "Open with Unpack" starts a second window; a single-instance hand-off would need the
-/// single-instance plugin, add it if people open many files.
 pub fn run(open: Option<String>) {
     tauri::Builder::default()
+        // A second start (another "Open with Unpack", or the menu entry) hands its file to this window and exits.
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = (w.unminimize(), w.show(), w.set_focus());
+            }
+            if let [_, cmd, rest @ ..] = argv.as_slice() {
+                if cmd == "open" && !rest.is_empty() {
+                    if let Ok(mut o) = app.state::<Arc<AppState>>().opened.lock() {
+                        *o = Some(rest.join(" "));
+                    }
+                    let _ = app.emit("opened", ());
+                }
+            }
+        }))
         .setup(move |app| {
             let store = Store::open(&util::data_dir().join("unpack.db"))?;
             app.manage(Arc::new(AppState { plans: Mutex::new(HashMap::new()), store: Mutex::new(store), offer: Mutex::new(None), cancel: Arc::new(AtomicBool::new(false)), opened: Mutex::new(open) }));

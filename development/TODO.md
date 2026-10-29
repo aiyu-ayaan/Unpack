@@ -119,7 +119,8 @@ Containers: `scripts/test-distros.sh` (CLI build, as root plus a normal user wit
 - [ ] Verify the helper prompt and `auth_admin_keep` on GNOME and KDE with the installed .deb **(unverified)**
 - [x] Export / import tracked list (move to new machine): Settings > Move to another computer, `unpack export` / `unpack import`
 - [x] Drop-from-browser integration: `.desktop` MIME handler for `.deb/.rpm/.AppImage…` ("Open with Unpack", Settings > Files; `unpack open <file>`)
-- [ ] Verify "Open with Unpack" in GNOME Files, Dolphin and a browser's download list **(unverified)**; a second open starts a second window (single-instance plugin if needed)
+- [x] Single instance (`tauri-plugin-single-instance`): a second start focuses the window, and a second "Open with Unpack" hands its file to it
+- [ ] Verify "Open with Unpack" in GNOME Files, Dolphin and a browser's download list, and the single-instance hand-off (D-Bus) **(unverified)**
 - [x] Leftover cleaner after uninstall (`~/.config/<app>`, caches) with preview (Library offer, `unpack remove --purge`)
 - [ ] i18n
 - [ ] Disk usage per app
