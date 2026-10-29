@@ -111,7 +111,8 @@ Containers: `scripts/test-distros.sh` (CLI build, as root plus a normal user wit
 - [ ] Container fallback for foreign formats (distrobox export)
 - [ ] Polkit action + narrow privileged helper instead of generic `pkexec`
 - [ ] Export / import tracked list (move to new machine)
-- [ ] Drop-from-browser integration: `.desktop` MIME handler for `.deb/.rpm/.AppImage…` ("Open with Unpack")
+- [x] Drop-from-browser integration: `.desktop` MIME handler for `.deb/.rpm/.AppImage…` ("Open with Unpack", Settings > Files; `unpack open <file>`)
+- [ ] Verify "Open with Unpack" in GNOME Files, Dolphin and a browser's download list **(unverified)**; a second open starts a second window (single-instance plugin if needed)
 - [x] Leftover cleaner after uninstall (`~/.config/<app>`, caches) with preview (Library offer, `unpack remove --purge`)
 - [ ] i18n
 - [ ] Disk usage per app

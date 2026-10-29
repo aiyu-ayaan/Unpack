@@ -124,7 +124,8 @@ fn run(args: &[String]) -> Result<i32, String> {
             let plan = check(&input(&o, cmd)?, &o)?;
             return Ok(if plan.supported { 0 } else { 2 });
         }
-        "install" => return install(&input(&o, cmd)?, &o),
+        // `open` is the window's "Open with Unpack" entry; without a window it is install.
+        "install" | "open" => return install(&input(&o, cmd)?, &o),
         "search" => {
             let found = catalog::search(&input(&o, cmd)?, &system::detect())?;
             if o.json {

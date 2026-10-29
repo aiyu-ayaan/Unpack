@@ -250,7 +250,7 @@ fn refresh_menu() {
     }
 }
 
-fn exec_quote(p: &Path) -> String {
+pub(crate) fn exec_quote(p: &Path) -> String {
     format!("\"{}\"", p.to_string_lossy().replace('\\', "\\\\").replace('"', "\\\"").replace('$', "\\$").replace('`', "\\`"))
 }
 

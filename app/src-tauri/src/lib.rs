@@ -7,6 +7,7 @@ pub mod fix;
 pub mod input;
 pub mod libcheck;
 pub mod library;
+pub mod mime;
 pub mod ops;
 pub mod plan;
 pub mod runner;

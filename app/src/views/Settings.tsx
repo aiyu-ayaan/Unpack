@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { ExternalLink, Code2, UserRound, Globe, Bug, RefreshCw, XCircle, CheckCircle2, Download } from "lucide-react";
 import { api, errText, type Channel, type Link } from "../api";
 import { plainNotes, type Update } from "../update";
@@ -34,11 +34,31 @@ const Card = ({ title, children }: { title: string; children: ReactNode }) => (
   <section className="card overflow-hidden"><h2 className="label border-b border-line px-4 py-2.5">{title}</h2>{children}</section>
 );
 
+function FileHandler() {
+  const [on, setOn] = useState<boolean | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => { api.fileHandler().then(setOn).catch(() => setOn(false)); }, []);
+  const toggle = async () => {
+    setErr(null);
+    try { await api.setFileHandler(!on); } catch (e) { setErr(errText(e)); }
+    setOn(await api.fileHandler().catch(() => false));
+  };
+  return (
+    <>
+      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+        <div><p className="text-strong">Open package files with Unpack</p><p className="text-xs text-dim">Double-click a .deb, .rpm, .AppImage, .flatpak or .snap to check it here first.</p></div>
+        <button role="switch" aria-checked={!!on} disabled={on === null} onClick={() => void toggle()} className={`btn ${on ? "btn-primary" : ""}`}>{on ? "On" : "Off"}</button>
+      </div>
+      {err && <div className="border-t border-line p-4"><Banner tone="bad" icon={<XCircle className="h-4 w-4" />}>{err}</Banner></div>}
+    </>
+  );
+}
+
 export default function Settings({ u }: { u: Update }) {
   const { info, offer } = u;
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-5">
-      <PageHeader title="Settings" sub="Updates, and who made Unpack." />
+      <PageHeader title="Settings" sub="Updates, files, your app list, and who made Unpack." />
 
       <Card title="Updates">
         <Row k="Installed version">{info?.version ?? "…"}</Row>
@@ -73,6 +93,8 @@ export default function Settings({ u }: { u: Update }) {
         )}
         {info && !info.self_install && <p className="border-t border-line px-4 py-3 text-xs text-dim">Installed from a package: updates download the new package and open it in your software installer. Development builds never offer updates.</p>}
       </Card>
+
+      <Card title="Files"><FileHandler /></Card>
 
       <Card title="About Unpack">
         <Row k="Version">{info?.version ?? "…"}</Row>

@@ -2,7 +2,7 @@
 use crate::plan::{Plan, Uninstall};
 use crate::store::{App, Event, Store};
 use crate::system::{self, System};
-use crate::{analyze, catalog, fetch, fix, library, ops, plan, runner, updates, upgrades, util};
+use crate::{analyze, catalog, fetch, fix, library, mime, ops, plan, runner, updates, upgrades, util};
 use ops::RunResult;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -17,6 +17,8 @@ struct AppState {
     offer: Mutex<Option<updates::Offer>>,
     /// Set by `cancel_analyze`; the running analyze checks it.
     cancel: Arc<AtomicBool>,
+    /// The file `unpack open <file>` started the window with, until the page takes it.
+    opened: Mutex<Option<String>>,
 }
 
 type Shared<'a> = State<'a, Arc<AppState>>;
@@ -140,6 +142,22 @@ async fn fix_plan(app_id: i64, state: Shared<'_>) -> Result<Plan, String> {
     let rec = state.store.lock().map_err(|e| e.to_string())?.get(app_id)?;
     let p = blocking(move || fix::plan(&rec, &system::detect())).await?;
     keep(&state, p)
+}
+
+/// The file this window was opened with ("Open with Unpack"), once.
+#[tauri::command]
+fn take_opened(state: Shared<'_>) -> Result<Option<String>, String> {
+    Ok(state.opened.lock().map_err(|e| e.to_string())?.take())
+}
+
+#[tauri::command]
+fn file_handler() -> bool {
+    mime::enabled()
+}
+
+#[tauri::command]
+async fn set_file_handler(on: bool) -> Result<(), String> {
+    blocking(move || if on { mime::enable() } else { mime::disable() }).await?
 }
 
 #[tauri::command]
@@ -302,15 +320,17 @@ fn open_link(which: String) -> Result<(), String> {
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
+/// shortcut: a second "Open with Unpack" starts a second window; a single-instance hand-off would need the
+/// single-instance plugin, add it if people open many files.
+pub fn run(open: Option<String>) {
     tauri::Builder::default()
-        .setup(|app| {
+        .setup(move |app| {
             let store = Store::open(&util::data_dir().join("unpack.db"))?;
-            app.manage(Arc::new(AppState { plans: Mutex::new(HashMap::new()), store: Mutex::new(store), offer: Mutex::new(None), cancel: Arc::new(AtomicBool::new(false)) }));
+            app.manage(Arc::new(AppState { plans: Mutex::new(HashMap::new()), store: Mutex::new(store), offer: Mutex::new(None), cancel: Arc::new(AtomicBool::new(false)), opened: Mutex::new(open) }));
             std::thread::spawn(analyze::clean_old_work);
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![detect_system, analyze, cancel_analyze, store_popular, store_search, store_plan, list_upgrades, upgrade_plan, update_app_plan, fix_plan, execute, list_apps, history, scan_system, uninstall_app, leftovers, remove_leftovers, uninstall_system, update_info, update_check, update_install, update_set_channel, update_skip, open_link])
+        .invoke_handler(tauri::generate_handler![detect_system, analyze, cancel_analyze, store_popular, store_search, store_plan, list_upgrades, upgrade_plan, update_app_plan, fix_plan, take_opened, file_handler, set_file_handler, execute, list_apps, history, scan_system, uninstall_app, leftovers, remove_leftovers, uninstall_system, update_info, update_check, update_install, update_set_channel, update_skip, open_link])
         .run(tauri::generate_context!())
         .expect("error while running Unpack");
 }

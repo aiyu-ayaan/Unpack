@@ -20,7 +20,7 @@ Unpack/
     src/                    React UI
     src-tauri/              Rust backend
       src/
-        main.rs             no arguments: the window (gui feature); any argument: cli::main
+        main.rs             no arguments: the window (gui feature); `open <file>`: the window with that file; any other argument: cli::main
         lib.rs              module list; re-exports gui::run when the `gui` feature is on
         gui.rs              Tauri setup, shared state, command registration (feature `gui`)
         cli.rs              `unpack <command>`: check, install, list, remove, scan, history, system
@@ -40,6 +40,7 @@ Unpack/
         upgrades.rs         what can be updated (each manager's upgradable list, newer GitHub releases of tracked apps, AppImage `.upd_info`) and the update plan
         fix.rs              "Fix my install": missing runtime (Flatpak, snapd, FUSE 2), lost exec bit, missing shared libraries
         libcheck.rs         `ldd` over a native package's files; which package provides a missing library, per manager
+        mime.rs             "Open with Unpack": hidden `unpack-open.desktop` for package MIME types, set as default with `xdg-mime`
         catalog.rs          Store: Flathub popular/search (HTTPS API) plus native and snap search (local CLIs)
 ```
 
@@ -115,6 +116,8 @@ DB path: `$XDG_DATA_HOME/unpack/unpack.db` (default `~/.local/share/unpack/`). D
 | `upgrade_plan(picks)` | One `Plan` (kind `update`, records nothing) for picked `{manager, name, user}`; names checked with `safe_ident`, apt refreshes its lists first, Arch always does a full `-Syu` |
 | `update_app_plan(app_id)` | Analyze the newer release file of a tracked app; on success the new record replaces the old one (old files removed, old row `updated`) |
 | `fix_plan(app_id)` | Repair plan for a tracked app (kind `fix`, records nothing); unsupported with advice when nothing is wrong |
+| `take_opened()` | The file `unpack open <file>` started the window with, once; the page checks it like a dropped file |
+| `file_handler()` / `set_file_handler(on)` | Whether "Open with Unpack" is on; write or remove `~/.local/share/applications/unpack-open.desktop` (`Exec=<AppImage or binary> open %f`) and set or clear it as the default for `.deb`, `.rpm`, AppImage, Flatpak and snap types |
 | `cancel_analyze()` | Stop the running analyze: the call returns `Cancelled` at once, the worker stops at its next check and removes its work folder |
 | `execute(plan_id, as_root)` | Run the stored plan, emit `plan-log`, record app + event in SQLite |
 | `list_apps()` | Tracked apps from SQLite |

@@ -47,6 +47,10 @@ export const api = {
   updateAppPlan: (appId: number) => invoke<Plan>("update_app_plan", { appId }),
   /** Repair plan for a tracked app; unsupported with advice when nothing is wrong. */
   fixPlan: (appId: number) => invoke<Plan>("fix_plan", { appId }),
+  /** The file the window was opened with ("Open with Unpack"), once. */
+  takeOpened: () => invoke<string | null>("take_opened"),
+  fileHandler: () => invoke<boolean>("file_handler"),
+  setFileHandler: (on: boolean) => invoke<void>("set_file_handler", { on }),
   cancelAnalyze: () => invoke<void>("cancel_analyze"),
   onAnalyzeProgress: (fn: (p: Fetched) => void) => listen<Fetched>("analyze-progress", (e) => fn(e.payload)),
   execute: (planId: string, asRoot: boolean) => invoke<RunResult>("execute", { planId, asRoot }),

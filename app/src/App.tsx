@@ -55,6 +55,7 @@ export default function App() {
   const [upErr, setUpErr] = useState<string | null>(null);
   const loadUpgrades = () => { setUpgrades(null); setUpErr(null); api.upgrades().then(setUpgrades).catch((e) => { setUpErr(String(e)); setUpgrades([]); }); };
   useEffect(() => { api.system().then(setSys).catch((e) => setSysErr(String(e))); }, []);
+  useEffect(() => { api.takeOpened().then((f) => f && setIncoming({ input: f })).catch(() => {}); }, []);
   // Checked once at start and after each install, so the badge stays current.
   useEffect(loadUpgrades, [version]);
   const current = NAV.find((n) => n.id === view)!;
