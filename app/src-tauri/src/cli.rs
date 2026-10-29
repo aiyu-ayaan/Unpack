@@ -228,6 +228,7 @@ fn how(u: &Uninstall) -> String {
     match u {
         Uninstall::Manager { manager, .. } => format!("via {manager}"),
         Uninstall::Files { paths } => format!("{} files tracked", paths.len()),
+        Uninstall::Container { container, .. } => format!("in {container}"),
         Uninstall::Traced => "traced".into(),
         Uninstall::Manual { .. } => "remove manually".into(),
     }

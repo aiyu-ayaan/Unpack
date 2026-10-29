@@ -99,7 +99,7 @@ export default function Library({ version, onTask, onReview }: { version: number
       <div className="card divide-y divide-line overflow-hidden">
         {tab === "tracked" && <div className="stagger divide-y divide-line">{tracked.map((a) => (
           <Row key={a.id} title={a.name} sub={`${a.version ?? ""} ${a.kind} · ${when(a.installed_at)}`.trim()} status={a.status}
-            how={a.uninstall.type === "manager" ? `via ${a.uninstall.manager}` : a.uninstall.type === "files" ? `${a.uninstall.paths.length} files tracked` : a.uninstall.type === "manual" ? "remove manually" : ""}
+            how={a.uninstall.type === "manager" ? `via ${a.uninstall.manager}` : a.uninstall.type === "files" ? `${a.uninstall.paths.length} files tracked` : a.uninstall.type === "manual" ? "remove manually" : a.uninstall.type === "container" ? `in container ${a.uninstall.container}` : ""}
             action={a.status === "installed" && <span className="flex gap-1">
               <button className="btn btn-ghost" disabled={busy !== null} onClick={() => void fix(a)} title="Find and repair what keeps it from starting">
                 {busy === `fix${a.id}` ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Wrench className="h-4 w-4" aria-hidden />} Fix</button>

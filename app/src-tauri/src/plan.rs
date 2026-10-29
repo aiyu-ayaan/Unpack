@@ -17,6 +17,8 @@ pub enum Action {
     InstallBinary { src: PathBuf, name: String },
     /// Find a package produced by an earlier build step and install it natively.
     InstallBuilt { dirs: Vec<PathBuf>, ext: String },
+    /// After installing a package inside a distrobox container: read its name there and export its menu entries.
+    ContainerExport { container: String, manager: String, file: PathBuf },
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -36,6 +38,9 @@ pub enum Uninstall {
     /// Files are filled in after the run from a before/after filesystem diff.
     Traced,
     Manual { note: String },
+    /// A package installed inside a distrobox container, with the menu entries (`apps`) and commands (`bins`)
+    /// exported from it.
+    Container { container: String, manager: String, ident: String, apps: Vec<String>, bins: Vec<String> },
 }
 
 /// What a successful run does to the database.
@@ -118,6 +123,7 @@ impl Plan {
             Action::InstallPortable { name, .. } => format!("install {name} into ~/.local/opt"),
             Action::InstallBinary { name, .. } => format!("copy {name} to ~/.local/bin"),
             Action::InstallBuilt { ext, .. } => format!("install the built .{ext} package"),
+            Action::ContainerExport { container, .. } => format!("add its apps from {container} to the app menu"),
         };
         self.needs_root |= root;
         self.steps.push(Step { label: label.into(), display: shown, needs_root: root, action });
@@ -293,6 +299,71 @@ fn pkginfo(path: &Path) -> Option<String> {
     None
 }
 
+/// The distrobox container Unpack uses for a foreign package format: `(name, image, manager inside)`.
+pub fn container_for(kind: Kind) -> Option<(&'static str, &'static str, &'static str)> {
+    match kind {
+        Kind::Deb => Some(("unpack-debian", "docker.io/library/debian:stable", "apt")),
+        Kind::Rpm => Some(("unpack-fedora", "registry.fedoraproject.org/fedora:latest", "dnf")),
+        Kind::PacmanPkg => Some(("unpack-arch", "docker.io/library/archlinux:latest", "pacman")),
+        Kind::AlpineApk => Some(("unpack-alpine", "docker.io/library/alpine:latest", "apk")),
+        _ => None,
+    }
+}
+
+/// distrobox and a container engine are both there.
+fn containers_available() -> bool {
+    has("distrobox") && (has("podman") || has("docker"))
+}
+
+fn container_exists(name: &str) -> bool {
+    capture("distrobox", &["list", "--no-color"]).is_ok_and(|o| o.lines().any(|l| l.split('|').nth(1).is_some_and(|c| c.trim() == name)))
+}
+
+/// Install a package from another distro family inside a distrobox container of that family, and put its
+/// apps in the host's menu. The container shares the home folder, so the file is copied there first.
+pub fn plan_container(p: &mut Plan, kind: Kind, path: &Path, exists: bool) {
+    let Some((name, image, manager)) = container_for(kind) else { return };
+    let staged = crate::util::cache_dir().join("container").join(path.file_name().unwrap_or_default());
+    let file = staged.to_string_lossy().to_string();
+    p.warnings.push(format!("This package is for another kind of Linux. Unpack will install it inside a container ({name}, made with distrobox) and add its apps to your menu. The first time downloads the container image, which can take a few minutes."));
+    if kind == Kind::AlpineApk {
+        p.warnings.push("Local Alpine packages are installed with --allow-untrusted (no signature check). Only continue if you trust the source.".into());
+    }
+    p.cmd("Copy the package where the container can see it", false, "install", &["-D", "-m", "0644", "--", &path.to_string_lossy(), &file], None);
+    if !exists {
+        p.cmd(&format!("Create the {name} container"), false, "distrobox", &["create", "--yes", "--name", name, "--image", image], None);
+    }
+    let enter = |p: &mut Plan, label: &str, args: &[&str]| {
+        let mut a = vec!["enter", name, "--", "sudo"];
+        a.extend(args);
+        p.cmd(label, false, "distrobox", &a, None);
+    };
+    match manager {
+        "apt" => {
+            enter(p, "Refresh the container's package lists", &["apt-get", "update"]);
+            enter(p, "Install inside the container", &["env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "install", "-y", &file]);
+        }
+        "dnf" => enter(p, "Install inside the container", &["dnf", "install", "-y", &file]),
+        "pacman" => {
+            enter(p, "Refresh the container's package lists", &["pacman", "-Sy", "--noconfirm"]);
+            enter(p, "Install inside the container", &["pacman", "-U", "--noconfirm", &file]);
+        }
+        _ => enter(p, "Install inside the container", &["apk", "add", "--allow-untrusted", &file]),
+    }
+    p.step("Add its apps to your menu", false, Action::ContainerExport { container: name.into(), manager: manager.into(), file: staged });
+    p.kind = format!("{kind:?} in {name}");
+}
+
+/// A package for another distro family: a distrobox container when that is available, else advice.
+fn foreign(p: &mut Plan, kind: Kind, path: &Path, what: &str, sys: &System) {
+    if containers_available() {
+        let exists = container_for(kind).is_some_and(|c| container_exists(c.0));
+        return plan_container(p, kind, path, exists);
+    }
+    unsupported_foreign(p, what, sys, "a different package format");
+    p.advice.push("With distrobox and podman installed, Unpack can install packages for other distros inside a container.".into());
+}
+
 fn unsupported_foreign(plan: &mut Plan, what: &str, sys: &System, native_fmt: &str) {
     plan.refuse(
         &format!("{what} can't be installed natively on {} (it uses {native_fmt}).", sys.distro),
@@ -314,7 +385,7 @@ fn plan_package(path: &Path, kind: Kind, sys: &System) -> Plan {
             let info = capture("dpkg-deb", &["-f", &abs, "Package", "Version", "Architecture"]);
             if sys.native != Some(Native::Apt) {
                 p.name = fname;
-                unsupported_foreign(&mut p, "A .deb package", sys, "a different package format");
+                foreign(&mut p, kind, path, "A .deb package", sys);
                 return p;
             }
             // Without the package name the uninstall record would be wrong, so never guess it from the file name.
@@ -357,7 +428,7 @@ fn plan_package(path: &Path, kind: Kind, sys: &System) -> Plan {
                     ("zypper", "zypper", vec!["--non-interactive", "install", "--allow-unsigned-rpm", &abs])
                 }
                 _ => {
-                    unsupported_foreign(&mut p, "An .rpm package", sys, "a different package format");
+                    foreign(&mut p, kind, path, "An .rpm package", sys);
                     return p;
                 }
             };
@@ -375,7 +446,7 @@ fn plan_package(path: &Path, kind: Kind, sys: &System) -> Plan {
             p.name = field(&info, "pkgname =").unwrap_or(fname);
             p.version = field(&info, "pkgver =");
             if sys.native != Some(Native::Pacman) {
-                unsupported_foreign(&mut p, "An Arch package", sys, "a different package format");
+                foreign(&mut p, kind, path, "An Arch package", sys);
                 return p;
             }
             if let Some(a) = field(&info, "arch =") {
@@ -392,7 +463,7 @@ fn plan_package(path: &Path, kind: Kind, sys: &System) -> Plan {
             p.name = field(&info, "pkgname =").unwrap_or(fname);
             p.version = field(&info, "pkgver =");
             if sys.native != Some(Native::Apk) {
-                unsupported_foreign(&mut p, "An Alpine package", sys, "a different package format");
+                foreign(&mut p, kind, path, "An Alpine package", sys);
                 return p;
             }
             p.warnings.push("Local Alpine packages are installed with --allow-untrusted (no signature check). Only continue if you trust the source.".into());
@@ -1084,8 +1155,23 @@ mod tests {
         let f = d.path().join("a.deb");
         std::fs::write(&f, b"!<arch>\ndebian-binary").unwrap();
         let p = plan_package(&f, Kind::Deb, &sys);
-        assert!(!p.supported);
-        assert!(p.steps.is_empty());
+        if !containers_available() {
+            assert!(!p.supported && p.steps.is_empty());
+        }
+    }
+
+    #[test]
+    fn foreign_package_goes_into_a_container() {
+        let mut p = Plan::new("Rpm", "tool", "");
+        plan_container(&mut p, Kind::Rpm, Path::new("/home/u/Downloads/tool.rpm"), false);
+        let shown: Vec<&str> = p.steps.iter().map(|s| s.display.as_str()).collect();
+        assert!(shown[1].starts_with("distrobox create --yes --name unpack-fedora --image registry.fedoraproject.org/fedora:latest"), "{shown:?}");
+        assert!(shown[2].starts_with("distrobox enter unpack-fedora -- sudo dnf install -y ") && shown[2].ends_with("container/tool.rpm"));
+        assert!(matches!(p.steps.last().unwrap().action, Action::ContainerExport { .. }));
+        assert!(!p.needs_root);
+        let mut again = Plan::new("Deb", "x", "");
+        plan_container(&mut again, Kind::Deb, Path::new("/x.deb"), true);
+        assert!(!again.steps.iter().any(|s| s.display.contains("distrobox create")));
     }
 
     #[test]

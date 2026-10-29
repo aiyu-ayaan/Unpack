@@ -71,6 +71,10 @@ Priority: **(1) native format for this family** → **(2) universal runtime alre
 - If `pkexec` is missing, show the exact `sudo` command for the user to run in a terminal (copy button). A custom polkit action + narrow helper binary is a later milestone.
 - Prefer user-scope (`flatpak --user`, `~/.local`) whenever the format allows it.
 
+## Packages from another distro family
+
+With `distrobox` and `podman` or `docker` on PATH, a `.deb`, `.rpm`, Arch or Alpine package that the host can't install goes into a container of its family: `unpack-debian` (`debian:stable`), `unpack-fedora` (`fedora:latest`), `unpack-arch` (`archlinux:latest`), `unpack-alpine` (`alpine:latest`). The plan copies the file under `~/.cache/unpack/container/` (the container shares home), creates the container once (`distrobox create --yes`), installs with the container's manager through its passwordless `sudo`, then reads the package name and file list inside the container and runs `distrobox-export --app` for each `.desktop` file (or `--bin` for up to five `/usr/bin` commands when there are none). The record is `Uninstall::Container`; removal deletes the exports and the package, and keeps the container for other apps. No host admin password is needed. Whole flow **(unverified on a real desktop)**.
+
 ## glibc and musl
 
 `plan::elf_interp` reads `PT_INTERP` from a 64-bit ELF (a downloaded program or `.bin` installer). A musl program (`ld-musl-*`) on a glibc system, or a glibc program (`ld-linux-*`) on musl, gets a warning (Alpine: `gcompat`). AppImages on musl keep their own warning.

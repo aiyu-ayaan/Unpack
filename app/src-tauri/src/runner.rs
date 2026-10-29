@@ -1,5 +1,5 @@
 //! Execute a plan: stream output, merge root steps into one pkexec prompt, record file changes.
-use crate::plan::{removal, Action, Input, Meta, Plan, Step, Uninstall};
+use crate::plan::{removal, safe_ident, Action, Input, Meta, Plan, Step, Uninstall};
 use crate::sniff::{sniff, Kind};
 use crate::system::System;
 use crate::util::{cache_dir, capture, display, has, home, which};
@@ -168,6 +168,10 @@ pub fn run(plan: &Plan, as_root: bool, sys: &System, emit: Emit) -> Result<Outco
             Action::IntegrateAppImage { src, name, no_sandbox, launcher } => created.extend(integrate_appimage(src, name, *no_sandbox, launcher.as_deref(), emit)?),
             Action::InstallPortable { from, name } => created.extend(install_portable(from, name, emit)?),
             Action::InstallBinary { src, name } => created.extend(install_binary(src, name, emit)?),
+            Action::ContainerExport { container, manager, file } => {
+                let u = container_export(container, manager, file, emit)?;
+                nested = Some(Outcome { uninstall: u, notes: vec![] });
+            }
             Action::InstallBuilt { dirs, ext } => {
                 let pkg = find_built(dirs, ext).ok_or_else(|| format!("The build finished but no .{ext} package was found"))?;
                 emit("info", &format!("Built package: {}", pkg.display()));
@@ -410,6 +414,86 @@ fn install_binary(src: &Path, name: &str, emit: Emit) -> Result<Vec<String>, Str
     Ok(vec![dest.to_string_lossy().into()])
 }
 
+// ------------------------------------------------------------ distrobox containers
+
+fn inside(container: &str, args: &[&str]) -> Result<String, String> {
+    let mut a = vec!["enter", container, "--"];
+    a.extend(args);
+    capture("distrobox", &a)
+}
+
+/// `key` value from `Key : value` or `key = value` lines.
+fn value_of(text: &str, key: &str) -> Option<String> {
+    text.lines().find_map(|l| {
+        let (k, v) = l.split_once(':').or_else(|| l.split_once('='))?;
+        (k.trim() == key).then(|| v.trim().to_string())
+    })
+}
+
+/// The package's name, read inside the container (the host may not have the tools for its format).
+fn container_ident(container: &str, manager: &str, file: &str) -> Option<String> {
+    let name = match manager {
+        "apt" => inside(container, &["dpkg-deb", "-f", file, "Package"]).ok().map(|o| o.trim().to_string()),
+        "dnf" => inside(container, &["rpm", "-qp", "--qf", "%{NAME}", file]).ok().map(|o| o.trim().to_string()),
+        "pacman" => inside(container, &["pacman", "-Qip", file]).ok().and_then(|o| value_of(&o, "Name")),
+        _ => inside(container, &["tar", "-xzOf", file, ".PKGINFO"]).ok().and_then(|o| value_of(&o, "pkgname")),
+    };
+    name.filter(|n| safe_ident(n))
+}
+
+/// Install-time half of a container install: name the package, export its menu entries (or, when it has
+/// none, the first few commands it puts in /usr/bin) to the host.
+fn container_export(container: &str, manager: &str, file: &Path, emit: Emit) -> Result<Uninstall, String> {
+    let ident = container_ident(container, manager, &file.to_string_lossy()).ok_or("Installed in the container, but its package name could not be read")?;
+    let list = match manager {
+        "apt" => inside(container, &["dpkg", "-L", &ident]),
+        "dnf" => inside(container, &["rpm", "-ql", &ident]),
+        "pacman" => inside(container, &["pacman", "-Qlq", &ident]),
+        _ => inside(container, &["apk", "info", "-L", &ident]),
+    }
+    .unwrap_or_default();
+    let paths: Vec<String> = list.lines().map(|l| if l.starts_with('/') { l.trim().to_string() } else { format!("/{}", l.trim()) }).collect();
+    let mut apps = vec![];
+    for d in paths.iter().filter_map(|p| p.strip_prefix("/usr/share/applications/")?.strip_suffix(".desktop")).filter(|n| safe_ident(n)) {
+        match inside(container, &["distrobox-export", "--app", d]) {
+            Ok(_) => apps.push(d.to_string()),
+            Err(e) => emit("warn", &format!("Could not add {d} to the menu: {e}")),
+        }
+    }
+    let mut bins = vec![];
+    if apps.is_empty() {
+        let dest = home().join(".local/bin").to_string_lossy().to_string();
+        for b in paths.iter().filter(|p| p.starts_with("/usr/bin/") && !p.contains("..")).take(5) {
+            if inside(container, &["distrobox-export", "--bin", b, "--export-path", &dest]).is_ok() {
+                bins.push(b.clone());
+            }
+        }
+    }
+    emit("info", &format!("{ident} is installed in {container}; added {} menu entries and {} commands", apps.len(), bins.len()));
+    let _ = std::fs::remove_file(file);
+    Ok(Uninstall::Container { container: container.into(), manager: manager.into(), ident, apps, bins })
+}
+
+fn container_uninstall(container: &str, manager: &str, ident: &str, apps: &[String], bins: &[String], emit: Emit) -> Result<(), String> {
+    if !safe_ident(container) || !container.starts_with("unpack-") {
+        return Err(format!("Refusing unknown container {container:?}"));
+    }
+    let dest = home().join(".local/bin").to_string_lossy().to_string();
+    for a in apps.iter().filter(|a| safe_ident(a)) {
+        if let Err(e) = inside(container, &["distrobox-export", "--app", a, "--delete"]) {
+            emit("warn", &format!("Could not remove {a} from the menu: {e}"));
+        }
+    }
+    for b in bins.iter().filter(|b| b.starts_with("/usr/bin/") && !b.contains("..")) {
+        let _ = inside(container, &["distrobox-export", "--bin", b, "--export-path", &dest, "--delete"]);
+    }
+    let (p, a, _) = removal(manager, ident, false)?;
+    let mut args: Vec<String> = ["enter", container, "--", "sudo", &p].map(String::from).to_vec();
+    args.extend(a);
+    emit("info", &format!("$ {}", display("distrobox", &args)));
+    run_command(user_cmd("distrobox", &args, &None), emit)
+}
+
 // ------------------------------------------------------------ uninstall
 
 fn removable_roots() -> Vec<PathBuf> {
@@ -453,6 +537,7 @@ pub fn uninstall(u: &Uninstall, sys: &System, emit: Emit) -> Result<(), String> 
             if root { run_root(&[(p, a, None)], sys, emit) } else { run_command(user_cmd(&p, &a, &None), emit) }
         }
         Uninstall::Files { paths } => remove_files(paths, sys, emit),
+        Uninstall::Container { container, manager, ident, apps, bins } => container_uninstall(container, manager, ident, apps, bins, emit),
         Uninstall::Traced => Err("No record of what this installed".into()),
         Uninstall::Manual { note } => Err(format!("Can't remove automatically. {note}")),
     }

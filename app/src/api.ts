@@ -16,6 +16,7 @@ export type SystemInfo = {
 export type Uninstall =
   | { type: "manager"; manager: string; ident: string; user: boolean }
   | { type: "files"; paths: string[] }
+  | { type: "container"; container: string; manager: string; ident: string; apps: string[]; bins: string[] }
   | { type: "traced" }
   | { type: "manual"; note: string };
 export type App = {

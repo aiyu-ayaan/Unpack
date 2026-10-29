@@ -149,6 +149,7 @@ The same binary takes commands: `unpack install file.deb`, `unpack list`, `unpac
 - Native package-recipe builds (`PKGBUILD`, `debian/`, `.dsc`) end in an `InstallBuilt` step: the produced package is planned and installed like a downloaded one, so the package manager owns removal.
 - A downloaded app's record keeps the link as given in `source` (updates read the GitHub project from it); when redirects led elsewhere the plan shows and the install event records the final address.
 - Updates of tracked apps: a `source` of `https://github.com/<owner>/<repo>/releases/download/<tag>/<file>` is compared with the project's latest release, and the replacement file is the one whose name is the old name with the new version, else the one with the same shape (digits ignored). AppImages that carry `gh-releases-zsync|owner|repo|tag|pattern` in their `.upd_info` ELF section are checked the same way. Plain `zsync|<url>` update info is not used yet.
+- Foreign packages with distrobox available end in a `ContainerExport` step; see [03-distro-compat.md](03-distro-compat.md#packages-from-another-distro-family).
 - Plans keep a SHA-256 of the analysed file; `execute` re-hashes and aborts on mismatch.
 - Work folders live in `~/.cache/unpack/work/<plan-id>`. A failed or cancelled analyze and a successful install remove theirs; anything left (a failed install, kept for a retry) is deleted at the next start once a day old.
 

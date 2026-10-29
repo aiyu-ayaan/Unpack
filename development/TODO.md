@@ -110,7 +110,8 @@ Containers: `scripts/test-distros.sh` (CLI build, as root plus a normal user wit
 - [ ] Staged install → build native package (fpm-like) so PM owns uninstall
 - [x] Sandbox untrusted scripts: bubblewrap preview for single-script plans (Install > Try it in a sandbox first, `unpack check --sandbox`)
 - [ ] Verify the bwrap preview on Ubuntu 24.04 (AppArmor userns restriction), Fedora and Arch desktops **(unverified: the dev shell blocks namespaces)**
-- [ ] Container fallback for foreign formats (distrobox export)
+- [x] Container fallback for foreign formats: distrobox container per family, install inside, `distrobox-export` apps or commands, `Uninstall::Container`
+- [ ] Verify the distrobox flow end to end with podman on a desktop **(unverified)**
 - [ ] Polkit action + narrow privileged helper instead of generic `pkexec`
 - [x] Export / import tracked list (move to new machine): Settings > Move to another computer, `unpack export` / `unpack import`
 - [x] Drop-from-browser integration: `.desktop` MIME handler for `.deb/.rpm/.AppImage…` ("Open with Unpack", Settings > Files; `unpack open <file>`)
