@@ -39,6 +39,18 @@
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.png"
-    ]
+    ],
+    "linux": {
+      "deb": {
+        "files": {
+          "/usr/share/polkit-1/actions/dev.unpack.app.helper.policy": "polkit/dev.unpack.app.helper.policy"
+        }
+      },
+      "rpm": {
+        "files": {
+          "/usr/share/polkit-1/actions/dev.unpack.app.helper.policy": "polkit/dev.unpack.app.helper.policy"
+        }
+      }
+    }
   }
 }

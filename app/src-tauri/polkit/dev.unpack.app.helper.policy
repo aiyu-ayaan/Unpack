@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+  "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+  <vendor>Unpack</vendor>
+  <vendor_url>https://github.com/aiyu-ayaan/Unpack</vendor_url>
+  <icon_name>unpack</icon_name>
+  <action id="dev.unpack.app.helper">
+    <description>Install or remove software with Unpack</description>
+    <message>Unpack needs your password to install, update or remove software</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/bin/unpack</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">helper</annotate>
+  </action>
+</policyconfig>

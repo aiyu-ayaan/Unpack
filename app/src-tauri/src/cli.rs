@@ -109,6 +109,14 @@ fn run(args: &[String]) -> Result<i32, String> {
     match cmd.as_str() {
         "-h" | "--help" | "help" => println!("{HELP}"),
         "-V" | "--version" | "version" => println!("unpack {}", updates::version()),
+        // Started by pkexec through the polkit action; not for people to type.
+        "helper" => {
+            let [json] = rest else { return Err("helper takes one argument".into()) };
+            if !system::detect().is_root {
+                return Err("helper only runs as root, started by pkexec".into());
+            }
+            return Ok(crate::helper::main(json));
+        }
         "system" => {
             let s = system::detect();
             if o.json {

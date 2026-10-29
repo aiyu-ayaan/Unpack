@@ -3,7 +3,7 @@ use crate::plan::{removal, safe_ident, Action, Input, Meta, Plan, Step, Uninstal
 use crate::sniff::{sniff, Kind};
 use crate::system::System;
 use crate::util::{cache_dir, capture, display, has, home, which};
-use crate::{fetch, trace};
+use crate::{fetch, helper, trace};
 use std::io::{BufRead, BufReader, Read};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -102,7 +102,13 @@ fn run_root(group: &[RootCmd], sys: &System, emit: Emit) -> Result<(), String> {
     };
     emit("info", "Waiting for the admin password…");
     let mut cmd = crate::util::command(pk);
-    cmd.args(["sh", "-c", &full]);
+    // The narrow helper when it is installed and every command is one it allows; else a shell.
+    let cmds: Vec<helper::Cmd> = group.iter().map(|(p, a, cwd)| helper::Cmd { program: p.clone(), args: a.clone(), cwd: cwd.as_ref().map(|d| d.to_string_lossy().into_owned()) }).collect();
+    if helper::usable() && cmds.iter().all(|c| helper::allowed(c).is_ok()) {
+        cmd.args([helper::EXE, "helper", &serde_json::to_string(&cmds).map_err(|e| e.to_string())?]);
+    } else {
+        cmd.args(["sh", "-c", &full]);
+    }
     let auth_err = std::cell::Cell::new(false);
     let watch = |s: &str, l: &str| {
         if s == "err" && (l.contains("Not authorized") || l.contains("authentication agent") || l.starts_with("Error executing command as another user")) {

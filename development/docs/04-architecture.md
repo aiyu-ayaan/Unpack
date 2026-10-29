@@ -43,6 +43,7 @@ Unpack/
         mime.rs             "Open with Unpack": hidden `unpack-open.desktop` for package MIME types, set as default with `xdg-mime`
         transfer.rs         export the installed apps as JSON; on import, how each comes back (Store id, original link, or not)
         sandbox.rs          try a single script plan in bubblewrap: read-only `/`, no network, throwaway home; reports output and files
+        helper.rs           `unpack helper <json>`: the root side of the polkit action; allowlisted package-manager commands, no shell
         catalog.rs          Store: Flathub popular/search (HTTPS API) plus native and snap search (local CLIs)
 ```
 

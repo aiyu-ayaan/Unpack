@@ -113,7 +113,8 @@ Containers: `scripts/test-distros.sh` (CLI build, as root plus a normal user wit
 - [ ] Verify the bwrap preview on Ubuntu 24.04 (AppArmor userns restriction), Fedora and Arch desktops **(unverified: the dev shell blocks namespaces)**
 - [x] Container fallback for foreign formats: distrobox container per family, install inside, `distrobox-export` apps or commands, `Uninstall::Container`
 - [ ] Verify the distrobox flow end to end with podman on a desktop **(unverified)**
-- [ ] Polkit action + narrow privileged helper instead of generic `pkexec`
+- [x] Polkit action + narrow privileged helper instead of generic `pkexec`: `dev.unpack.app.helper` shipped in the .deb/.rpm, `unpack helper` with a per-manager allowlist; other root steps keep `pkexec sh -c`
+- [ ] Verify the helper prompt and `auth_admin_keep` on GNOME and KDE with the installed .deb **(unverified)**
 - [x] Export / import tracked list (move to new machine): Settings > Move to another computer, `unpack export` / `unpack import`
 - [x] Drop-from-browser integration: `.desktop` MIME handler for `.deb/.rpm/.AppImage…` ("Open with Unpack", Settings > Files; `unpack open <file>`)
 - [ ] Verify "Open with Unpack" in GNOME Files, Dolphin and a browser's download list **(unverified)**; a second open starts a second window (single-instance plugin if needed)
