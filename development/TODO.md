@@ -63,7 +63,7 @@ Legend: `[x]` done, `[ ]` open, `[~]` partly done. Update this file in the same 
 - [x] `gui` cargo feature: `--no-default-features` builds the CLI without Tauri/WebKit; `ops.rs` shares install/uninstall/record between window and CLI
 - [x] Root steps use `sudo` in a terminal, `pkexec` otherwise
 - [x] `scripts/build-cli.sh`: static musl binary (`unpack-cli_<version>_<arch>`), published by the release workflow, installed with `install-linux.sh --cli`
-- [ ] Remove packages the system reports (Library's "Everything on this computer") from the CLI
+- [x] Remove packages the system reports (Library's "Everything on this computer") from the CLI: `unpack remove <name>` falls back to them, `manager:name` when two managers have it
 
 ## M4 — Format completeness
 Status: all code paths below exist and are unit-tested for planning/parsing. `[~]` = implemented, not yet run end to end on a real distro (see M5).

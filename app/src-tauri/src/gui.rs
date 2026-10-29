@@ -1,8 +1,8 @@
 //! The desktop window: Tauri commands over the same core the command line uses.
-use crate::plan::{Plan, Uninstall};
+use crate::plan::Plan;
 use crate::store::{App, Event, Store};
 use crate::system::{self, System};
-use crate::{analyze, catalog, fetch, fix, library, mime, ops, plan, runner, sandbox, transfer, updates, upgrades, util};
+use crate::{analyze, catalog, fetch, fix, library, mime, ops, plan, sandbox, transfer, updates, upgrades, util};
 use ops::RunResult;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -264,9 +264,7 @@ async fn uninstall_system(manager: String, ident: String, app: AppHandle) -> Res
         let emit = |stream: &str, line: &str| {
             let _ = app.emit("plan-log", LogLine { plan_id: "uninstall", stream, line });
         };
-        let user = manager == "flatpak";
-        let r = runner::uninstall(&Uninstall::Manager { manager, ident, user }, &system::detect(), &emit);
-        Ok(RunResult { ok: r.is_ok(), app_id: None, error: r.err(), notes: vec![] })
+        Ok(ops::uninstall_system(&manager, &ident, &system::detect(), &emit))
     })
     .await?
 }

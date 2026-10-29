@@ -91,6 +91,13 @@ pub fn uninstall(app_id: i64, sys: &System, store: &Mutex<Store>, emit: Emit) ->
     })
 }
 
+/// Remove a package the system reports (Library's "Everything on this computer"), not one Unpack tracks.
+pub fn uninstall_system(manager: &str, ident: &str, sys: &System, emit: Emit) -> RunResult {
+    let user = manager == "flatpak";
+    let r = runner::uninstall(&Uninstall::Manager { manager: manager.into(), ident: ident.into(), user }, sys, emit);
+    RunResult { ok: r.is_ok(), app_id: None, error: r.err(), notes: vec![] }
+}
+
 // ------------------------------------------------------------ leftovers
 
 /// Folders apps keep their settings, caches and data in, one folder per app.

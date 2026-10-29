@@ -19,7 +19,8 @@ Commands:
   list                 Apps installed with Unpack (--all: removed ones too)
   updates              What can be updated: system packages, Flatpaks, snaps, and apps from GitHub releases
   upgrade [name...]    Update those packages (all of them with no names)
-  remove <id|name>     Uninstall a tracked app (--purge: also its settings and cache folders)
+  remove <id|name>     Uninstall a tracked app (--purge: also its settings and cache folders), or a package
+                       `unpack scan` lists (`manager:name` when two package managers have it)
   fix <id|name>        Find what keeps an app from starting and repair it
   export [file]        Save the list of installed apps (default ~/unpack-apps.json) to take to another computer
   import <file>        Install the apps of an exported list again, asking for each
@@ -453,6 +454,10 @@ fn find(db: &Store, key: &str, any_status: bool) -> Result<App, String> {
 fn remove(o: &Opts) -> Result<i32, String> {
     let key = o.args.first().ok_or("remove needs an app id or name. See `unpack list`.")?;
     let db = store()?;
+    let tracked = key.parse::<i64>().is_ok() || db.lock().map_err(|e| e.to_string())?.list()?.iter().any(|a| a.name.eq_ignore_ascii_case(key));
+    if !tracked {
+        return remove_system(key, o);
+    }
     // --purge also takes an app that is already removed, to clean up after it.
     let app = find(&*db.lock().map_err(|e| e.to_string())?, key, o.purge)?;
     let emit = emitter(o.json);
@@ -491,9 +496,52 @@ fn remove(o: &Opts) -> Result<i32, String> {
     Ok(0)
 }
 
+/// The one package `key` (`name` or `manager:name`) names among those the package managers report.
+fn system_pick(key: &str, pkgs: Vec<library::SysPkg>) -> Result<library::SysPkg, String> {
+    let (manager, name) = match key.split_once(':') {
+        Some((m, n)) => (Some(m), n),
+        None => (None, key),
+    };
+    let mut hits: Vec<library::SysPkg> = pkgs.into_iter().filter(|p| p.name == name && manager.is_none_or(|m| p.manager == m)).collect();
+    match hits.len() {
+        1 => Ok(hits.remove(0)),
+        0 => Err(format!("nothing called {key} was installed with Unpack or by a package manager. See `unpack list` and `unpack scan`.")),
+        _ => {
+            let ms: Vec<&str> = hits.iter().map(|p| p.manager.as_str()).collect();
+            Err(format!("{name} is installed by more than one package manager ({}); name one, like `unpack remove {}:{name}`.", ms.join(", "), ms[0]))
+        }
+    }
+}
+
+fn remove_system(key: &str, o: &Opts) -> Result<i32, String> {
+    let p = system_pick(key, library::scan())?;
+    if !ask(&format!("Remove {} (installed with {}, not by Unpack)?", p.name, p.manager), o)? {
+        return Ok(3);
+    }
+    runner::TERMINAL_SUDO.store(std::io::stdin().is_terminal(), std::sync::atomic::Ordering::Relaxed);
+    let r = ops::uninstall_system(&p.manager, &p.name, &system::detect(), &emitter(o.json));
+    if let Some(e) = r.error {
+        return Err(e);
+    }
+    if o.json {
+        json(&serde_json::json!({ "ok": true, "manager": p.manager, "name": p.name }))?;
+    } else {
+        println!("Removed {}.", p.name);
+    }
+    Ok(0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn picks_one_system_package() {
+        let pkgs = || vec![library::SysPkg { name: "vlc".into(), version: "3".into(), manager: "apt".into() }, library::SysPkg { name: "vlc".into(), version: "3".into(), manager: "snap".into() }];
+        assert!(system_pick("vlc", pkgs()).unwrap_err().contains("apt, snap"));
+        assert_eq!(system_pick("snap:vlc", pkgs()).unwrap().manager, "snap");
+        assert!(system_pick("gimp", pkgs()).is_err());
+    }
 
     fn args(s: &[&str]) -> Vec<String> {
         s.iter().map(|x| x.to_string()).collect()
