@@ -108,7 +108,8 @@ Containers: `scripts/test-distros.sh` (CLI build, as root plus a normal user wit
 - [x] "Fix my install": missing libfuse2, no flatpak/snapd, missing exec bit, missing shared libraries with the providing package per manager (Library > Fix, `unpack fix`)
 - [ ] Verify library providers: `dnf repoquery --whatprovides`, `zypper search --provides`, `pacman -F` (needs `pacman -Fy`), `apk search so:` **(unverified)**
 - [x] Staged install → build native package so PM owns uninstall: `.deb` from `DESTDIR` staging on apt systems (Install > Build a system package instead, `--package`)
-- [ ] Staged builds to `.rpm` (rpmbuild with a generated spec) and Arch (generated PKGBUILD over the stage)
+- [x] Staged builds to `.rpm` (rpmbuild with a generated spec) and Arch (generated PKGBUILD over the stage)
+- [ ] Verify staged `.rpm` on Fedora/openSUSE and Arch packages with makepkg **(unverified)**
 - [x] Sandbox untrusted scripts: bubblewrap preview for single-script plans (Install > Try it in a sandbox first, `unpack check --sandbox`)
 - [ ] Verify the bwrap preview on Ubuntu 24.04 (AppArmor userns restriction), Fedora and Arch desktops **(unverified: the dev shell blocks namespaces)**
 - [x] Container fallback for foreign formats: distrobox container per family, install inside, `distrobox-export` apps or commands, `Uninstall::Container`

@@ -34,7 +34,8 @@ Options:
       --root           Run the main step as administrator, when the plan allows it
       --allow-http     Accept a plain http:// link
       --sandbox        With check or install: first try a script in a sandbox (bubblewrap) and show what it did
-      --package        With check or install: build source into a system package (.deb) the package manager can remove
+      --package        With check or install: build source into a system package (.deb, .rpm or Arch) the
+                       package manager can remove
       --purge          With remove: also delete leftover settings, cache and data folders
       --all            With list: include removed apps
       --json           Machine-readable output

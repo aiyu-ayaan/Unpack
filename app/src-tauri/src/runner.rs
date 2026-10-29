@@ -178,8 +178,8 @@ pub fn run(plan: &Plan, as_root: bool, sys: &System, emit: Emit) -> Result<Outco
             }
             Action::InstallPortable { from, name } => created.extend(install_portable(from, name, emit)?),
             Action::InstallBinary { src, name } => created.extend(install_binary(src, name, emit)?),
-            Action::PackageDeb { stage, out, name, version } => {
-                package_deb(stage, out, name, version.as_deref(), emit)?;
+            Action::Package { stage, out, name, version, ext } => {
+                package(stage, out, name, version.as_deref(), ext, emit)?;
             }
             Action::ContainerExport { container, manager, file } => {
                 let u = container_export(container, manager, file, emit)?;
@@ -429,17 +429,42 @@ fn install_binary(src: &Path, name: &str, emit: Emit) -> Result<Vec<String>, Str
     Ok(vec![dest.to_string_lossy().into()])
 }
 
-/// `dpkg-deb --build` over a `DESTDIR` staging folder, with a generated `DEBIAN/control`.
-fn package_deb(stage: &Path, out: &Path, name: &str, version: Option<&str>, emit: Emit) -> Result<(), String> {
-    let staged = walkdir::WalkDir::new(stage).into_iter().flatten().any(|e| !e.file_type().is_dir());
-    if !staged {
+/// A native package of a `DESTDIR` staging folder: `dpkg-deb --build` with a generated `DEBIAN/control`, `rpmbuild`
+/// with a generated spec, or `makepkg` with a generated PKGBUILD.
+fn package(stage: &Path, out: &Path, name: &str, version: Option<&str>, ext: &str, emit: Emit) -> Result<(), String> {
+    let entries: Vec<walkdir::DirEntry> = walkdir::WalkDir::new(stage).min_depth(1).into_iter().flatten().collect();
+    if entries.iter().all(|e| e.file_type().is_dir()) {
         return Err("The build installed no files into the staging folder, so there is nothing to package.".into());
+    }
+    std::fs::create_dir_all(out).map_err(|e| e.to_string())?;
+    let run = |program: &str, args: &[String], cwd: Option<PathBuf>| {
+        emit("info", &format!("$ {}", display(program, args)));
+        run_command(user_cmd(program, args, &cwd), emit)
+    };
+    match ext {
+        "deb" => {}
+        "rpm" => {
+            let rel = |e: &walkdir::DirEntry| format!("/{}", e.path().strip_prefix(stage).unwrap_or(e.path()).to_string_lossy());
+            let files: Vec<String> = entries.iter().filter(|e| !e.file_type().is_dir()).map(rel).collect();
+            // Folders deeper than /usr/local/share are the app's own; shallower ones belong to the system.
+            let dirs: Vec<String> = entries.iter().filter(|e| e.file_type().is_dir() && e.depth() > 3).map(rel).collect();
+            let spec = out.join("unpack.spec");
+            std::fs::write(&spec, crate::plan::rpm_spec(name, version, stage, &files, &dirs)).map_err(|e| e.to_string())?;
+            let top = format!("_topdir {}", out.join("rpmbuild").display());
+            let rpms = format!("_rpmdir {}", out.display());
+            let args: Vec<String> = vec!["-bb".into(), "--define".into(), top, "--define".into(), rpms, spec.to_string_lossy().into()];
+            return run("rpmbuild", &args, None);
+        }
+        _ => {
+            std::fs::write(out.join("PKGBUILD"), crate::plan::pkgbuild(name, version, stage)).map_err(|e| e.to_string())?;
+            let args: Vec<String> = [format!("PKGDEST={}", out.display()), "PKGEXT=.pkg.tar.zst".into(), "makepkg".into(), "-f".into(), "--noconfirm".into()].to_vec();
+            return run("env", &args, Some(out.to_path_buf()));
+        }
     }
     let control = stage.join("DEBIAN");
     std::fs::create_dir_all(&control).map_err(|e| e.to_string())?;
     std::fs::write(control.join("control"), crate::plan::deb_control(name, version)).map_err(|e| e.to_string())?;
-    std::fs::create_dir_all(out).map_err(|e| e.to_string())?;
-    let deb = out.join(format!("{}.deb", crate::plan::deb_name(name)));
+    let deb = out.join(format!("{}.deb", crate::plan::pkg_name(name)));
     let mut c = crate::util::command("dpkg-deb");
     c.args(["--build", "--root-owner-group"]).arg(stage).arg(&deb);
     emit("info", &format!("$ dpkg-deb --build --root-owner-group {} {}", stage.display(), deb.display()));
@@ -655,10 +680,10 @@ mod tests {
         }
         let d = tempfile::tempdir().unwrap();
         let stage = d.path().join("stage");
-        assert!(package_deb(&stage, &d.path().join("out"), "Tool", Some("1.0"), &|_, _| {}).is_err(), "empty stage");
+        assert!(package(&stage, &d.path().join("out"), "Tool", Some("1.0"), "deb", &|_, _| {}).is_err(), "empty stage");
         std::fs::create_dir_all(stage.join("usr/local/bin")).unwrap();
         std::fs::write(stage.join("usr/local/bin/tool"), "#!/bin/sh\n").unwrap();
-        package_deb(&stage, &d.path().join("out"), "Tool", Some("1.0"), &|_, _| {}).unwrap();
+        package(&stage, &d.path().join("out"), "Tool", Some("1.0"), "deb", &|_, _| {}).unwrap();
         let deb = d.path().join("out/unpack-tool.deb");
         assert_eq!(capture("dpkg-deb", &["-f", &deb.to_string_lossy(), "Package", "Version"]).unwrap(), "Package: unpack-tool\nVersion: 1.0~unpack1\n");
         assert!(capture("dpkg-deb", &["-c", &deb.to_string_lossy()]).unwrap().contains("./usr/local/bin/tool"));

@@ -17,8 +17,9 @@ pub enum Action {
     InstallBinary { src: PathBuf, name: String },
     /// Find a package produced by an earlier build step and install it natively.
     InstallBuilt { dirs: Vec<PathBuf>, ext: String },
-    /// Turn a `DESTDIR` staging folder into a `.deb` in `out`, so apt owns the installed files.
-    PackageDeb { stage: PathBuf, out: PathBuf, name: String, version: Option<String> },
+    /// Turn a `DESTDIR` staging folder into a native package in `out` (`ext`: `deb`, `rpm` or `pkg.tar.zst`), so the
+    /// package manager owns the installed files.
+    Package { stage: PathBuf, out: PathBuf, name: String, version: Option<String>, ext: String },
     /// After installing a package inside a distrobox container: read its name there and export its menu entries.
     ContainerExport { container: String, manager: String, file: PathBuf },
 }
@@ -78,7 +79,7 @@ pub struct Plan {
     pub needs_root: bool,
     /// A single script step the user can try in a sandbox first (`sandbox::preview`).
     pub sandbox: bool,
-    /// Analyzing again with `as_package` builds a native package instead (source builds on apt systems).
+    /// Analyzing again with `as_package` builds a native package instead (source builds on apt, dnf, zypper, pacman).
     pub can_package: bool,
     #[serde(skip)]
     pub uninstall: Uninstall,
@@ -128,7 +129,7 @@ impl Plan {
             Action::InstallPortable { name, .. } => format!("install {name} into ~/.local/opt"),
             Action::InstallBinary { name, .. } => format!("copy {name} to ~/.local/bin"),
             Action::InstallBuilt { ext, .. } => format!("install the built .{ext} package"),
-            Action::PackageDeb { name, .. } => format!("make a .deb package of {name} (dpkg-deb)"),
+            Action::Package { name, ext, .. } => format!("make a .{ext} package of {name} ({})", match ext.as_str() { "deb" => "dpkg-deb", "rpm" => "rpmbuild", _ => "makepkg" }),
             Action::ContainerExport { container, .. } => format!("add its apps from {container} to the app menu"),
         };
         self.needs_root |= root;
@@ -160,7 +161,7 @@ pub struct Meta {
     pub source: String,
     pub sha256: Option<String>,
     pub pipe_to_shell: bool,
-    /// Build source into a native package (`.deb`) instead of installing into `~/.local`.
+    /// Build source into a native package (`.deb`, `.rpm`, Arch) instead of installing into `~/.local`.
     pub as_package: bool,
 }
 
@@ -819,15 +820,28 @@ fn named_pkg(sys: &System, generic: &'static str) -> &'static str {
     }
 }
 
-/// Source builds that honour `DESTDIR`, on a system that can turn the staged files into a `.deb`.
-fn can_stage(content: &Content, sys: &System) -> bool {
-    matches!(content, Content::Source(Build::Autotools | Build::CMake | Build::Meson | Build::Make)) && sys.native == Some(Native::Apt) && !sys.immutable && has("dpkg-deb")
+/// The package format (extension) a source build that honours `DESTDIR` can be staged into on this system.
+fn can_stage(content: &Content, sys: &System) -> Option<&'static str> {
+    if !matches!(content, Content::Source(Build::Autotools | Build::CMake | Build::Meson | Build::Make)) || sys.immutable {
+        return None;
+    }
+    match sys.native? {
+        Native::Apt if has("dpkg-deb") => Some("deb"),
+        // rpmbuild is installed as a build tool when missing.
+        Native::Dnf | Native::Zypper => Some("rpm"),
+        Native::Pacman if has("makepkg") => Some("pkg.tar.zst"),
+        _ => None,
+    }
 }
 
 pub fn plan_content(content: &Content, dir: &Path, name: &str, sys: &System, as_package: bool) -> Plan {
     let mut p = Plan::new("source", name, "");
-    let staged = as_package && can_stage(content, sys);
-    p.can_package = !staged && can_stage(content, sys);
+    let format = can_stage(content, sys);
+    let staged = as_package && format.is_some();
+    p.can_package = !staged && format.is_some();
+    if staged && format == Some("rpm") {
+        build_tools(sys, &mut p, &["rpmbuild"], &["rpm-build"]);
+    }
     let prefix = if staged { "/usr/local".to_string() } else { home().join(".local").to_string_lossy().to_string() };
     let stage = dir.join("unpack-stage").to_string_lossy().to_string();
     let destdir = format!("DESTDIR={stage}");
@@ -935,10 +949,13 @@ pub fn plan_content(content: &Content, dir: &Path, name: &str, sys: &System, as_
         Content::Wrapper(_) | Content::Plain => p.refuse("No known way to install this.", &[]),
     }
     if staged && p.supported {
-        let out = dir.join("unpack-deb");
-        p.step("Make a package", false, Action::PackageDeb { stage: stage.into(), out: out.clone(), name: name.into(), version: None });
-        p.step("Install the package", true, Action::InstallBuilt { dirs: vec![out], ext: "deb".into() });
-        p.kind = "source → .deb".into();
+        let ext = format.unwrap_or("deb");
+        let out = dir.join("unpack-pkg");
+        // rpmbuild writes into a folder named after the CPU.
+        let built = if ext == "rpm" { out.join(std::env::consts::ARCH) } else { out.clone() };
+        p.step("Make a package", false, Action::Package { stage: stage.into(), out, name: name.into(), version: None, ext: ext.into() });
+        p.step("Install the package", true, Action::InstallBuilt { dirs: vec![built], ext: ext.into() });
+        p.kind = format!("source → .{ext}");
         p.trace = false;
         p.uninstall = Uninstall::Manual { note: "set after install".into() };
         return p;
@@ -1006,8 +1023,8 @@ pub fn dsc_sums(text: &str) -> Vec<(String, String)> {
     out
 }
 
-/// A Debian package name for something built by Unpack: `unpack-` plus the lowercased name.
-pub fn deb_name(name: &str) -> String {
+/// A package name for something built by Unpack: `unpack-` plus the lowercased name. Valid for dpkg, rpm and pacman.
+pub fn pkg_name(name: &str) -> String {
     let n: String = name.to_lowercase().chars().map(|c| if c.is_ascii_alphanumeric() || "+.-".contains(c) { c } else { '-' }).collect();
     format!("unpack-{}", n.trim_matches(['-', '.', '+']))
 }
@@ -1017,8 +1034,47 @@ pub fn deb_control(name: &str, version: Option<&str>) -> String {
     let v = version.filter(|v| v.starts_with(|c: char| c.is_ascii_digit()) && v.chars().all(|c| c.is_ascii_alphanumeric() || ".+~-".contains(c))).unwrap_or("0");
     format!(
         "Package: {}\nVersion: {v}~unpack1\nArchitecture: {}\nMaintainer: Unpack <unpack@localhost>\nSection: misc\nPriority: optional\nDescription: {name}, built from source by Unpack\n",
-        deb_name(name),
+        pkg_name(name),
         host_deb_arch()
+    )
+}
+
+/// A version rpm and pacman accept (no `-`, `:` or spaces), else `0`.
+fn pkg_version(version: Option<&str>) -> &str {
+    version.filter(|v| v.starts_with(|c: char| c.is_ascii_digit()) && v.chars().all(|c| c.is_ascii_alphanumeric() || ".+~_".contains(c))).unwrap_or("0")
+}
+
+/// A single-quoted shell word (for the generated spec and PKGBUILD).
+fn sh_word(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "'\\''"))
+}
+
+/// The `.spec` for a staged build: `%install` copies the stage; `%files` lists what is in it (`files`, `dirs`:
+/// absolute paths), so rpm owns every file and the app's own folders.
+pub fn rpm_spec(name: &str, version: Option<&str>, stage: &Path, files: &[String], dirs: &[String]) -> String {
+    // `%` starts an rpm macro even inside quotes.
+    let q = |s: &str| format!("\"{}\"", s.replace('%', "%%"));
+    let mut list: Vec<String> = dirs.iter().map(|d| format!("%dir {}", q(d))).collect();
+    list.extend(files.iter().map(|f| q(f)));
+    format!(
+        "Name: {}\nVersion: {}\nRelease: 1.unpack\nSummary: {name}, built from source by Unpack\nLicense: Unknown\nBuildArch: {}\n%define debug_package %{{nil}}\n%define __os_install_post %{{nil}}\n\n%description\n{name}, built from source by Unpack.\n\n%install\nmkdir -p %{{buildroot}}\ncp -a {}/. %{{buildroot}}/\n\n%files\n{}\n",
+        pkg_name(name),
+        pkg_version(version),
+        std::env::consts::ARCH,
+        sh_word(&stage.to_string_lossy()).replace('%', "%%"),
+        list.join("\n")
+    )
+}
+
+/// The `PKGBUILD` for a staged build: `package()` copies the stage into `$pkgdir`.
+pub fn pkgbuild(name: &str, version: Option<&str>, stage: &Path) -> String {
+    format!(
+        "pkgname={}\npkgver={}\npkgrel=1\npkgdesc={}\narch=('{}')\nlicense=('unknown')\noptions=('!strip' '!debug')\n\npackage() {{\n  cp -a {}/. \"$pkgdir/\"\n}}\n",
+        pkg_name(name),
+        pkg_version(version),
+        sh_word(&format!("{name}, built from source by Unpack")),
+        std::env::consts::ARCH,
+        sh_word(&stage.to_string_lossy())
     )
 }
 
@@ -1220,7 +1276,7 @@ mod tests {
 
     #[test]
     fn staged_build_makes_a_deb() {
-        assert_eq!(deb_name("My Tool_2"), "unpack-my-tool-2");
+        assert_eq!(pkg_name("My Tool_2"), "unpack-my-tool-2");
         let c = deb_control("Tool", Some("1.2"));
         assert!(c.starts_with("Package: unpack-tool\nVersion: 1.2~unpack1\n") && c.contains("Architecture: "));
         assert!(deb_control("x", Some("v1;rm")).contains("Version: 0~unpack1"));
@@ -1232,7 +1288,21 @@ mod tests {
             assert!(plan_content(&Content::Source(Build::CMake), Path::new("/w/src"), "tool", &sys, false).can_package);
         }
         sys.native = Some(Native::Dnf);
+        let p = plan_content(&Content::Source(Build::CMake), Path::new("/w/src"), "tool", &sys, true);
+        assert_eq!(p.kind, "source → .rpm");
+        assert!(matches!(&p.steps.last().unwrap().action, Action::InstallBuilt { dirs, ext } if ext == "rpm" && dirs[0].ends_with(std::env::consts::ARCH)));
+        sys.native = Some(Native::Apk);
         assert!(!plan_content(&Content::Source(Build::CMake), Path::new("/w/src"), "tool", &sys, true).steps.iter().any(|s| s.display.contains("DESTDIR")));
+    }
+
+    #[test]
+    fn staged_build_spec_and_pkgbuild() {
+        let spec = rpm_spec("My Tool", Some("1.2-3"), Path::new("/w/it's"), &["/usr/local/bin/tool".into(), "/usr/local/share/t/100%".into()], &["/usr/local/share/t".into()]);
+        assert!(spec.starts_with("Name: unpack-my-tool\nVersion: 0\n"), "{spec}");
+        assert!(spec.contains("cp -a '/w/it'\\''s'/. %{buildroot}/"));
+        assert!(spec.contains("%dir \"/usr/local/share/t\"\n\"/usr/local/bin/tool\"\n\"/usr/local/share/t/100%%\""));
+        let b = pkgbuild("tool", Some("2.0"), Path::new("/w/stage"));
+        assert!(b.contains("pkgname=unpack-tool\npkgver=2.0\n") && b.contains("cp -a '/w/stage'/. \"$pkgdir/\""));
     }
 
     #[test]
