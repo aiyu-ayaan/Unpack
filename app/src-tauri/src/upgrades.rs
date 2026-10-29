@@ -1,5 +1,6 @@
 //! What can be updated: packages the system's managers report as upgradable, and apps Unpack installed from a
-//! GitHub release (the recorded link, or the update address an AppImage carries in its `.upd_info` section).
+//! GitHub release (the recorded link, or the update address an AppImage carries in its `.upd_info` section: a
+//! GitHub release pattern or a plain `.zsync` link).
 use crate::plan::{safe_ident, Plan, Track, Uninstall};
 use crate::store::App;
 use crate::system::{Native, System};
@@ -259,15 +260,41 @@ pub fn elf_section(path: &Path, want: &str) -> Option<Vec<u8>> {
     None
 }
 
-/// `(owner, repo, tag, pattern)` from `gh-releases-zsync|owner|repo|latest|App-*x86_64.AppImage.zsync`.
-pub fn parse_upd_info(text: &str) -> Option<(String, String, String, String)> {
+/// The update address an AppImage carries in its `.upd_info` section.
+#[derive(Debug, PartialEq)]
+pub enum UpdInfo {
+    /// `gh-releases-zsync|owner|repo|latest|App-*x86_64.AppImage.zsync`: the release asset matching the pattern.
+    GitHub { owner: String, repo: String, tag: String, pattern: String },
+    /// `zsync|https://example.com/App-latest-x86_64.AppImage.zsync`: a fixed `.zsync` file that names the newest build.
+    Zsync(String),
+}
+
+pub fn parse_upd_info(text: &str) -> Option<UpdInfo> {
     let t = text.trim_end_matches('\0').trim();
     let p: Vec<&str> = t.split('|').collect();
-    // shortcut: plain `zsync|<url>` is skipped, it needs the remote file's SHA-1 against the local one; add when asked.
     match p.as_slice() {
-        ["gh-releases-zsync", o, r, tag, pat] => Some((o.to_string(), r.to_string(), tag.to_string(), pat.trim_end_matches(".zsync").to_string())),
+        ["gh-releases-zsync", o, r, tag, pat] => Some(UpdInfo::GitHub { owner: o.to_string(), repo: r.to_string(), tag: tag.to_string(), pattern: pat.trim_end_matches(".zsync").to_string() }),
+        ["zsync", url] if url.starts_with("https://") => Some(UpdInfo::Zsync(url.to_string())),
         _ => None,
     }
+}
+
+/// `(SHA-1, file name, download link)` from a `.zsync` header (`Key: value` lines up to the first blank line).
+/// `URL:` may be relative to the `.zsync` file.
+pub fn parse_zsync(header: &str, zsync_url: &str) -> Option<(String, String, String)> {
+    let get = |k: &str| header.lines().take_while(|l| !l.is_empty()).find_map(|l| l.strip_prefix(k)?.strip_prefix(':').map(|v| v.trim().to_string()));
+    let (sha1, url) = (get("SHA-1")?, get("URL")?);
+    let name = get("Filename").unwrap_or_else(|| url.rsplit('/').next().unwrap_or_default().to_string());
+    let url = if url.contains("://") { url } else { format!("{}/{url}", zsync_url.rsplit_once('/')?.0) };
+    Some((sha1.to_lowercase(), name, url))
+}
+
+/// The header of a `.zsync` file; the block checksums after it are not needed.
+fn zsync_header(url: &str) -> Result<String, String> {
+    let r = ureq::get(url).set("User-Agent", concat!("Unpack/", env!("CARGO_PKG_VERSION"))).timeout(std::time::Duration::from_secs(15)).call().map_err(|e| e.to_string())?;
+    let mut buf = vec![];
+    r.into_reader().take(16 * 1024).read_to_end(&mut buf).map_err(|e| e.to_string())?;
+    Ok(String::from_utf8_lossy(&buf).into_owned())
 }
 
 fn release(owner: &str, repo: &str, tag: &str) -> Result<Release, String> {
@@ -300,11 +327,21 @@ pub fn newer_download(app: &App) -> Option<(String, String, String)> {
     }
     let Uninstall::Files { paths } = &app.uninstall else { return None };
     let image = paths.iter().map(Path::new).find(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("appimage")))?;
-    let (o, r, tag, pat) = parse_upd_info(&String::from_utf8_lossy(&elf_section(image, ".upd_info")?))?;
-    let rel = release(&o, &r, &tag).ok()?;
-    let have = image.file_name()?.to_string_lossy();
-    let asset = rel.assets.iter().find(|a| glob(&pat, &a.name))?;
-    (asset.name != have).then(|| (app.version.clone().unwrap_or_else(|| have.to_string()), rel.tag_name, asset.browser_download_url.clone()))
+    let have = image.file_name()?.to_string_lossy().into_owned();
+    let current = app.version.clone().unwrap_or_else(|| have.clone());
+    match parse_upd_info(&String::from_utf8_lossy(&elf_section(image, ".upd_info")?))? {
+        UpdInfo::GitHub { owner, repo, tag, pattern } => {
+            let rel = release(&owner, &repo, &tag).ok()?;
+            let asset = rel.assets.iter().find(|a| glob(&pattern, &a.name))?;
+            (asset.name != have).then(|| (current, rel.tag_name, asset.browser_download_url.clone()))
+        }
+        // The .zsync names one build; it is newer when its checksum is not this file's.
+        UpdInfo::Zsync(url) => {
+            let (sha1, name, link) = parse_zsync(&zsync_header(&url).ok()?, &url)?;
+            let mine = capture("sha1sum", &[&image.to_string_lossy()]).ok()?;
+            (mine.split_whitespace().next()? != sha1 && link.starts_with("https://")).then_some((current, name, link))
+        }
+    }
 }
 
 /// Everything that can be updated, with Unpack's own records marked. Asks GitHub once per tracked download.
@@ -409,8 +446,12 @@ mod tests {
         assert!(glob("Subsurface-*x86_64.AppImage", "Subsurface-5.0-x86_64.AppImage"));
         assert!(!glob("Subsurface-*x86_64.AppImage", "Subsurface-5.0-aarch64.AppImage"));
         assert!(glob("a*b*c", "a1b2c") && !glob("a*b*c", "ac") && glob("x", "x"));
-        assert_eq!(parse_upd_info("gh-releases-zsync|o|r|latest|A-*x86_64.AppImage.zsync\0\0"), Some(("o".into(), "r".into(), "latest".into(), "A-*x86_64.AppImage".into())));
-        assert_eq!(parse_upd_info("zsync|https://x/A.AppImage.zsync"), None);
+        assert_eq!(parse_upd_info("gh-releases-zsync|o|r|latest|A-*x86_64.AppImage.zsync\0\0"), Some(UpdInfo::GitHub { owner: "o".into(), repo: "r".into(), tag: "latest".into(), pattern: "A-*x86_64.AppImage".into() }));
+        assert_eq!(parse_upd_info("zsync|https://x/A.AppImage.zsync"), Some(UpdInfo::Zsync("https://x/A.AppImage.zsync".into())));
+        assert_eq!(parse_upd_info("zsync|http://x/A.AppImage.zsync"), None);
+        let head = "zsync: 0.6.2\nFilename: A-2.AppImage\nSHA-1: ABC123\nURL: A-2.AppImage\n\nURL: ignored";
+        assert_eq!(parse_zsync(head, "https://x/d/A.AppImage.zsync"), Some(("abc123".into(), "A-2.AppImage".into(), "https://x/d/A-2.AppImage".into())));
+        assert_eq!(parse_zsync("SHA-1: a\nURL: https://y/B\n", "https://x/A.zsync").unwrap().2, "https://y/B");
     }
 
     #[test]
@@ -424,7 +465,7 @@ mod tests {
             return; // no binutils here
         }
         let got = elf_section(&out, ".upd_info").unwrap();
-        assert_eq!(parse_upd_info(&String::from_utf8_lossy(&got)).unwrap().3, "A-*.AppImage");
+        assert!(matches!(parse_upd_info(&String::from_utf8_lossy(&got)), Some(UpdInfo::GitHub { pattern, .. }) if pattern == "A-*.AppImage"));
         assert!(elf_section(&out, ".nope").is_none());
     }
 

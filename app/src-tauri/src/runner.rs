@@ -171,7 +171,11 @@ pub fn run(plan: &Plan, as_root: bool, sys: &System, emit: Emit) -> Result<Outco
                     created.push(dest.to_string_lossy().into());
                 }
             }
-            Action::IntegrateAppImage { src, name, no_sandbox, launcher } => created.extend(integrate_appimage(src, name, *no_sandbox, launcher.as_deref(), emit)?),
+            Action::IntegrateAppImage { src, name, no_sandbox, launcher } => {
+                // An update may keep the file name (`App-latest.AppImage`); it replaces the old copy.
+                let replace = matches!(plan.track, crate::plan::Track::Replace(_));
+                created.extend(integrate_appimage(src, name, *no_sandbox, launcher.as_deref(), replace, emit)?)
+            }
             Action::InstallPortable { from, name } => created.extend(install_portable(from, name, emit)?),
             Action::InstallBinary { src, name } => created.extend(install_binary(src, name, emit)?),
             Action::PackageDeb { stage, out, name, version } => {
@@ -297,15 +301,17 @@ fn minimal_desktop(name: &str, exec: &str, flags: &str) -> String {
     format!("[Desktop Entry]\nType=Application\nName={name}\nExec={exec}{flags}\nTerminal=false\nCategories=Utility;\n")
 }
 
-fn integrate_appimage(src: &Path, name: &str, no_sandbox: bool, launcher: Option<&Path>, emit: Emit) -> Result<Vec<String>, String> {
+fn integrate_appimage(src: &Path, name: &str, no_sandbox: bool, launcher: Option<&Path>, replace: bool, emit: Emit) -> Result<Vec<String>, String> {
     let file = src.file_name().ok_or("bad file name")?;
     let dest_dir = home().join("Applications");
     std::fs::create_dir_all(&dest_dir).map_err(|e| e.to_string())?;
     let dest = dest_dir.join(file);
-    if dest.exists() {
+    if dest.exists() && !replace {
         return Err(format!("{} already exists. Remove it first or rename the download.", dest.display()));
     }
-    std::fs::copy(src, &dest).map_err(|e| e.to_string())?;
+    // Copy beside it and rename over it, so a running copy of the old version is not overwritten in place.
+    let part = dest.with_extension("unpack-part");
+    std::fs::copy(src, &part).and_then(|_| std::fs::rename(&part, &dest)).map_err(|e| e.to_string())?;
     std::fs::set_permissions(&dest, std::fs::Permissions::from_mode(0o755)).map_err(|e| e.to_string())?;
     emit("info", &format!("Copied to {}", dest.display()));
     let mut created = vec![dest.to_string_lossy().to_string()];
