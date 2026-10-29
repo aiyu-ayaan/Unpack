@@ -41,6 +41,10 @@ pub struct System {
     pub helpers: Vec<String>,
     pub missing_helpers: Vec<String>,
     pub immutable: bool,
+    /// On a read-only base: the tool that adds packages to it (`rpm-ostree`, `transactional-update`), if any.
+    pub layer: Option<String>,
+    /// The standard glibc loader is missing (NixOS without nix-ld): binaries built for other distros can't start.
+    pub no_fhs_loader: bool,
     pub musl: bool,
     pub is_root: bool,
 }
@@ -119,6 +123,25 @@ fn is_musl() -> bool {
         .unwrap_or(false)
 }
 
+/// The glibc dynamic loader programs from other distros ask for, for this CPU.
+pub fn glibc_loader() -> Option<&'static str> {
+    match std::env::consts::ARCH {
+        "x86_64" => Some("/lib64/ld-linux-x86-64.so.2"),
+        "aarch64" => Some("/lib/ld-linux-aarch64.so.1"),
+        _ => None,
+    }
+}
+
+fn layer_tool(ostree: bool) -> Option<String> {
+    if ostree && has("rpm-ostree") {
+        Some("rpm-ostree".into())
+    } else if has("transactional-update") {
+        Some("transactional-update".into())
+    } else {
+        None
+    }
+}
+
 pub fn detect() -> System {
     let text = std::fs::read_to_string("/etc/os-release")
         .or_else(|_| std::fs::read_to_string("/usr/lib/os-release"))
@@ -130,6 +153,7 @@ pub fn detect() -> System {
         list.iter().filter(|b| which(b).is_some()).map(|b| b.to_string()).collect()
     };
     let helpers = found(&HELPERS);
+    let musl = is_musl();
     let missing_helpers = HELPERS
         .iter()
         .filter(|h| !helpers.iter().any(|f| f == *h))
@@ -146,8 +170,11 @@ pub fn detect() -> System {
         runtimes: found(&RUNTIMES),
         helpers,
         missing_helpers,
-        immutable: Path::new("/run/ostree-booted").exists() || has("transactional-update"),
-        musl: is_musl(),
+        // SteamOS ships `steamos-readonly` to toggle its read-only root.
+        immutable: Path::new("/run/ostree-booted").exists() || has("transactional-update") || has("steamos-readonly"),
+        layer: layer_tool(Path::new("/run/ostree-booted").exists()),
+        no_fhs_loader: !musl && glibc_loader().is_some_and(|l| !Path::new(l).exists()),
+        musl,
         is_root: effective_uid() == Some(0),
     }
 }

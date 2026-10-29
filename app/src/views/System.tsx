@@ -23,11 +23,15 @@ export default function System({ s, err }: { s: SystemInfo | null; err: string |
             <div className="text-dim">{s.family} family · {s.arch} · installs with {s.native ?? "no native package manager"}</div>
           </div>
           <div className="ml-auto flex flex-wrap justify-end gap-1.5">
-            {s.immutable && <span className="chip chip-warn"><Lock className="h-3 w-3" aria-hidden /> Read-only base</span>}
+            {s.immutable && <span className="chip chip-warn"><Lock className="h-3 w-3" aria-hidden /> Read-only base{s.layer && ` · adds packages with ${s.layer}`}</span>}
+            {s.no_fhs_loader && <span className="chip chip-warn">No standard loader (NixOS)</span>}
             {s.musl && <span className="chip chip-warn"><ShieldAlert className="h-3 w-3" aria-hidden /> musl libc</span>}
             {s.is_root && <span className="chip chip-warn">Running as root</span>}
           </div>
         </section>
+        {s.immutable && <Banner tone="info" icon={<Lock className="h-4 w-4" />}>{s.layer
+          ? `The base system is read-only. Packages from your distro are added with ${s.layer} and may need a reboot; Flatpak apps and AppImages install right away.`
+          : "The base system is read-only and has no tool to add packages to it. Unpack installs Flatpak apps, AppImages and portable apps here, and can use a distrobox container for other packages."}</Banner>}
         {s.is_root && <Banner tone="warn" icon={<ShieldAlert className="h-4 w-4" />}>Unpack is running as root. Apps meant for your user (Flatpak --user, AppImages, ~/.local) will be installed for root instead. Start Unpack as your normal user; it asks for the admin password only when a step needs it.</Banner>}
         <section className="card flex flex-col gap-5 p-5">
           <Chips title="Package managers" items={s.managers} />

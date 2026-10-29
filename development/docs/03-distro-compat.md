@@ -28,10 +28,10 @@ Goal: work on any distro. Strategy: never hard-code distro names for behaviour. 
 
 | System | How to detect | Strategy |
 |---|---|---|
-| Fedora Silverblue/Kinoite, Bazzite, Universal Blue | `/run/ostree-booted` | Prefer Flatpak or AppImage. `.rpm` → `rpm-ostree install` (layering, reboot required — warn). |
-| openSUSE MicroOS / Aeon | `transactional-update` | `transactional-update pkg install f.rpm`, reboot. Prefer Flatpak. |
-| SteamOS (Steam Deck) | `ID=steamos` | Root is read-only and wiped by updates. Prefer Flatpak, AppImage, user-prefix installs. Do not disable read-only. |
-| NixOS | `ID=nixos` | See table above. |
+| Fedora Silverblue/Kinoite, Bazzite, Universal Blue | `/run/ostree-booted` and `rpm-ostree` on PATH (`System.layer = "rpm-ostree"`) | `.rpm` files, Store packages and bootstrap tools → `rpm-ostree install --idempotent --apply-live` (layered; recorded with manager `rpm-ostree`, removed with `rpm-ostree uninstall`). Plan warns a reboot may be needed. Native upgrades are not listed (the base updates as a whole). `--apply-live` on local RPMs **(unverified)** |
+| openSUSE MicroOS / Aeon | `transactional-update` on PATH (`layer = "transactional-update"`) | `transactional-update --non-interactive pkg install [--allow-unsigned-rpm] <pkg or file>`, effective after reboot; removal `transactional-update --non-interactive pkg remove`. Whether the new snapshot sees a file under `~/.cache` **(unverified)** |
+| SteamOS (Steam Deck) | `steamos-readonly` on PATH (read-only, no layering tool) | Anything that writes the system (native packages, bootstrap) is refused with advice: Flatpak, AppImage, portable apps, or a distrobox container. Do not disable read-only. |
+| NixOS | No glibc loader at `/lib64/ld-linux-x86-64.so.2` (`System.no_fhs_loader`) | AppImage menu entries run through `appimage-run` when installed; otherwise the plan says to install it or enable `programs.appimage.binfmt`. A downloaded ELF whose loader is missing gets a `programs.nix-ld.enable` note. Native formats are refused (no native manager). |
 | ChromeOS Crostini | Debian in container | Works as Debian; no snapd. |
 | Containers / WSL | `/.dockerenv`, `WSL_DISTRO_NAME` | Warn that GUI apps may not show; systemd may be absent (breaks snapd). |
 
@@ -70,6 +70,10 @@ Priority: **(1) native format for this family** → **(2) universal runtime alre
 - `pkexec` exit 126 = password dialog dismissed; exit 127 with a "Not authorized" / "authentication agent" message on stderr = not granted or no polkit agent running (common on bare window managers). Both become plain-language errors; 127 also shows the `sudo sh -c …` fallback. Plain 127 without that message is the script's own "command not found".
 - If `pkexec` is missing, show the exact `sudo` command for the user to run in a terminal (copy button). A custom polkit action + narrow helper binary is a later milestone.
 - Prefer user-scope (`flatpak --user`, `~/.local`) whenever the format allows it.
+
+## glibc and musl
+
+`plan::elf_interp` reads `PT_INTERP` from a 64-bit ELF (a downloaded program or `.bin` installer). A musl program (`ld-musl-*`) on a glibc system, or a glibc program (`ld-linux-*`) on musl, gets a warning (Alpine: `gcompat`). AppImages on musl keep their own warning.
 
 ## Known hard cases
 

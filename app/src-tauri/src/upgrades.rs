@@ -139,7 +139,8 @@ fn stdout(program: &str, args: &[&str]) -> String {
 
 /// Upgradable packages every manager on this system reports. Lists come from each manager's last refresh.
 pub fn system(sys: &System) -> Vec<Upgrade> {
-    let mut v = match sys.native {
+    // A read-only base is updated as a whole by its own tool (rpm-ostree upgrade, transactional-update up).
+    let mut v = match sys.native.filter(|_| !sys.immutable) {
         Some(Native::Apt) => parse_apt(&stdout("apt", &["list", "--upgradable"])),
         Some(Native::Dnf) => parse_dnf(&stdout(if has("dnf") { "dnf" } else { "yum" }, &["check-update", "-q"])),
         Some(Native::Zypper) => parse_zypper(&stdout("zypper", &["--non-interactive", "--no-refresh", "list-updates"])),
@@ -331,7 +332,7 @@ pub fn plan(picks: &[Pick], sys: &System) -> Plan {
         return p;
     }
     let names = |m: &str, user: Option<bool>| -> Vec<&str> { picks.iter().filter(|k| k.manager == m && user.is_none_or(|u| k.user == u)).map(|k| k.name.as_str()).collect() };
-    let native = sys.native.map(crate::plan::manager_name);
+    let native = sys.native.filter(|_| !sys.immutable).map(crate::plan::manager_name);
     for m in ["apt", "dnf", "zypper", "pacman", "apk"] {
         let n = names(m, None);
         if n.is_empty() {

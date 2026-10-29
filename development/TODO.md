@@ -87,10 +87,11 @@ Containers: `scripts/test-distros.sh` (CLI build, as root plus a normal user wit
 - [x] Arch tested (container)
 - [x] Alpine 3.24 tested (container)
 - [ ] Same flows on a real desktop (polkit window, menu entries, AppImage, Flatpak, Snap) **(unverified)**
-- [ ] Immutable: Silverblue (rpm-ostree), SteamOS, MicroOS plans
-- [ ] NixOS notes (`appimage-run`, `nix-ld`)
+- [x] Immutable: Silverblue (rpm-ostree layering with `--apply-live`), MicroOS (transactional-update), SteamOS (refuse system writes, advise Flatpak/AppImage/distrobox); native upgrades not listed there
+- [ ] Verify rpm-ostree and transactional-update flows on Silverblue and Aeon **(unverified)**
+- [x] NixOS: AppImage menu entries through `appimage-run`, `nix-ld` note for foreign programs (detected by the missing glibc loader, not the distro name)
 - [ ] Void / Gentoo: universal formats + source plan only
-- [ ] glibc vs musl warning
+- [x] glibc vs musl warning from the program's `PT_INTERP`
 
 ## M6 — Packaging Unpack itself
 - [~] `tauri build` → .deb (built OK, 5 MiB); .rpm and AppImage not tried

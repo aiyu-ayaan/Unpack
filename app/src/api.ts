@@ -11,7 +11,7 @@ export type Plan = {
 export type SystemInfo = {
   distro: string; id: string; version: string; family: string; native: string | null;
   arch: string; managers: string[]; runtimes: string[]; helpers: string[];
-  missing_helpers: string[]; immutable: boolean; musl: boolean; is_root: boolean;
+  missing_helpers: string[]; immutable: boolean; layer: string | null; no_fhs_loader: boolean; musl: boolean; is_root: boolean;
 };
 export type Uninstall =
   | { type: "manager"; manager: string; ident: string; user: boolean }

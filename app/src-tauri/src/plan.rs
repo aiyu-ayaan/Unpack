@@ -11,7 +11,8 @@ pub enum Action {
     Cmd { program: String, args: Vec<String>, cwd: Option<PathBuf> },
     Extract { archive: PathBuf, fmt: Archive, dest: PathBuf },
     /// `no_sandbox`: the menu entry starts the app with `--no-sandbox` (Electron on a system that blocks its sandbox).
-    IntegrateAppImage { src: PathBuf, name: String, no_sandbox: bool },
+    /// `launcher`: the menu entry runs the file through it (`appimage-run` where foreign binaries can't start).
+    IntegrateAppImage { src: PathBuf, name: String, no_sandbox: bool, launcher: Option<PathBuf> },
     InstallPortable { from: PathBuf, name: String },
     InstallBinary { src: PathBuf, name: String },
     /// Find a package produced by an earlier build step and install it natively.
@@ -165,10 +166,8 @@ pub fn build(input: &Input, sys: &System, meta: &Meta) -> Plan {
             "This came from a 'download and run' command. Unpack saved the script and will run that saved copy only after you approve.".into(),
         );
     }
+    read_only_base(&mut plan, sys);
     if plan.supported {
-        if sys.immutable {
-            plan.warnings.push("This system has a read-only base. System-wide package installs may need a reboot or may be undone by updates; Flatpak or AppImage is safer.".into());
-        }
         if plan.needs_root && !sys.is_root && !has("pkexec") {
             plan.warnings.push("Admin rights are needed but `pkexec` is missing. Install `polkit` or run the shown commands in a terminal.".into());
         }
@@ -219,13 +218,47 @@ pub fn install_pkgs(native: Native, pkgs: &[&str]) -> (String, Vec<String>) {
     (prog.into(), a)
 }
 
+/// Command that adds packages (names or local package files) to a read-only base: `rpm-ostree` layers them
+/// (`--apply-live` makes them usable before a reboot), `transactional-update` installs into the next snapshot.
+pub fn layered(sys: &System, pkgs: &[&str]) -> Option<(String, Vec<String>)> {
+    let base: &[&str] = match sys.layer.as_deref().filter(|_| sys.immutable)? {
+        "rpm-ostree" => &["install", "--idempotent", "--apply-live"],
+        "transactional-update" => &["--non-interactive", "pkg", "install"],
+        _ => return None,
+    };
+    let tool = sys.layer.clone()?;
+    Some((tool, base.iter().chain(pkgs).map(|s| s.to_string()).collect()))
+}
+
+/// Install repository packages the way this system allows: layered on a read-only base, else natively.
+pub fn native_install(sys: &System, pkgs: &[&str]) -> Option<(String, Vec<String>)> {
+    layered(sys, pkgs).or_else(|| sys.native.filter(|_| !sys.immutable).map(|n| install_pkgs(n, pkgs)))
+}
+
 pub fn bootstrap(plan: &mut Plan, sys: &System, label: &str, pkgs: &[&str]) {
-    match sys.native {
-        Some(n) => {
-            let (p, a) = install_pkgs(n, pkgs);
-            plan.step(label, true, Action::Cmd { program: p, args: a, cwd: None });
-        }
+    match native_install(sys, pkgs) {
+        Some((p, a)) => plan.step(label, true, Action::Cmd { program: p, args: a, cwd: None }),
+        None if sys.immutable => plan.refuse(&format!("{} needs {}, and this system's read-only base can't add packages.", plan.name, pkgs.join(", ")), &[READ_ONLY_ADVICE]),
         None => plan.refuse("No supported package manager found to install the missing tools.", &[]),
+    }
+}
+
+const READ_ONLY_ADVICE: &str = "Use the Flatpak or AppImage version of the app, or install it inside a distrobox/toolbox container.";
+
+/// A read-only base (Silverblue, MicroOS, SteamOS): layered installs get a reboot note; without a layering
+/// tool, anything that writes the system is refused, since an update would undo it.
+fn read_only_base(p: &mut Plan, sys: &System) {
+    if !p.supported || !sys.immutable {
+        return;
+    }
+    let layered = p.steps.iter().any(|s| matches!(&s.action, Action::Cmd { program, .. } if Some(program.as_str()) == sys.layer.as_deref()));
+    if layered {
+        p.warnings.push(match sys.layer.as_deref() {
+            Some("rpm-ostree") => "This system has a read-only base: the package is layered onto it with rpm-ostree. It survives updates; a reboot may be needed before everything works.",
+            _ => "This system has a read-only base: the package goes into a new snapshot with transactional-update and is there after the next reboot.",
+        }.into());
+    } else if p.needs_root {
+        p.refuse("This system has a read-only base, so packages can't be installed into it here.", &[READ_ONLY_ADVICE]);
     }
 }
 
@@ -312,9 +345,14 @@ fn plan_package(path: &Path, kind: Kind, sys: &System) -> Plan {
             let name = l.next().filter(|s| !s.is_empty()).map(String::from).unwrap_or(fname);
             p.name = name.clone();
             p.version = l.next().map(String::from);
-            let (manager, prog, args): (&str, &str, Vec<&str>) = match sys.native {
-                Some(Native::Dnf) => ("dnf", if has("dnf") { "dnf" } else { "yum" }, vec!["install", "-y", &abs]),
-                Some(Native::Zypper) => {
+            let (manager, prog, args): (&str, &str, Vec<&str>) = match (sys.immutable, sys.layer.as_deref(), sys.native) {
+                (true, Some("rpm-ostree"), _) => ("rpm-ostree", "rpm-ostree", vec!["install", "--idempotent", "--apply-live", &abs]),
+                (true, Some("transactional-update"), _) => {
+                    p.warnings.push("openSUSE will install this even if it is unsigned (--allow-unsigned-rpm). Only continue if you trust the source.".into());
+                    ("transactional-update", "transactional-update", vec!["--non-interactive", "pkg", "install", "--allow-unsigned-rpm", &abs])
+                }
+                (_, _, Some(Native::Dnf)) => ("dnf", if has("dnf") { "dnf" } else { "yum" }, vec!["install", "-y", &abs]),
+                (_, _, Some(Native::Zypper)) => {
                     p.warnings.push("openSUSE will install this even if it is unsigned (--allow-unsigned-rpm). Only continue if you trust the source.".into());
                     ("zypper", "zypper", vec!["--non-interactive", "install", "--allow-unsigned-rpm", &abs])
                 }
@@ -368,8 +406,9 @@ fn plan_package(path: &Path, kind: Kind, sys: &System) -> Plan {
         Kind::Snap => plan_snap(&mut p, path, &abs, sys),
         Kind::FlatpakBundle | Kind::FlatpakRef | Kind::FlatpakRepo => plan_flatpak(&mut p, kind, &abs, sys),
         Kind::AppImage => plan_appimage(&mut p, path, sys),
-        Kind::Script | Kind::RunInstaller | Kind::BinInstaller => plan_script(&mut p, path, kind),
+        Kind::Script | Kind::RunInstaller | Kind::BinInstaller => plan_script(&mut p, path, kind, sys),
         Kind::Elf => {
+            p.warnings.extend(loader_warning(path, sys));
             p.title = format!("Install {fname}");
             p.name = fname.clone();
             p.step("Copy program into ~/.local/bin", false, Action::InstallBinary { src: path.to_path_buf(), name: fname });
@@ -510,7 +549,16 @@ fn plan_appimage(p: &mut Plan, path: &Path, sys: &System) {
     if no_sandbox {
         p.warnings.push("This app is built on Electron, and this system does not let ordinary programs create the user namespace that Chromium's sandbox needs (AppArmor `apparmor_restrict_unprivileged_userns`). It would crash at start. The menu entry will launch it with `--no-sandbox`, which turns that sandbox off for this app. Only continue if you trust it.".into());
     }
-    p.step("Add to app menu", false, Action::IntegrateAppImage { src: path.to_path_buf(), name, no_sandbox });
+    let launcher = if sys.no_fhs_loader {
+        let found = crate::util::which("appimage-run");
+        if found.is_none() {
+            p.warnings.push("This system has no standard Linux loader (NixOS), so AppImages don't start on their own. Install `appimage-run`, or turn on `programs.appimage.binfmt` in configuration.nix, then open the app.".into());
+        }
+        found
+    } else {
+        None
+    };
+    p.step("Add to app menu", false, Action::IntegrateAppImage { src: path.to_path_buf(), name, no_sandbox, launcher });
     p.uninstall = Uninstall::Traced;
 }
 
@@ -541,7 +589,7 @@ fn interpreter(text: &str) -> (String, Vec<String>) {
     (prog.into(), w.map(String::from).collect())
 }
 
-fn plan_script(p: &mut Plan, path: &Path, kind: Kind) {
+fn plan_script(p: &mut Plan, path: &Path, kind: Kind, sys: &System) {
     p.name = file_stem(path);
     let bytes = std::fs::read(path).unwrap_or_default();
     let is_text = !bytes.starts_with(b"\x7fELF");
@@ -554,6 +602,7 @@ fn plan_script(p: &mut Plan, path: &Path, kind: Kind) {
         }
     } else {
         p.warnings.push("This is a compiled installer; its contents can't be shown. Only run it if you trust the source.".into());
+        p.warnings.extend(loader_warning(path, sys));
     }
     let (prog, mut args) = if is_text { interpreter(&text) } else { (path.to_string_lossy().to_string(), vec![]) };
     let root_hint = text.contains("sudo ") || text.contains("EUID") || text.contains("id -u");
@@ -574,6 +623,50 @@ fn plan_script(p: &mut Plan, path: &Path, kind: Kind) {
     p.root_optional = true;
     p.trace = true;
     p.uninstall = Uninstall::Traced;
+}
+
+/// The dynamic loader (`PT_INTERP`) a little-endian 64-bit ELF program asks for; none for static programs.
+pub fn elf_interp(path: &Path) -> Option<String> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut f = std::fs::File::open(path).ok()?;
+    let mut h = [0u8; 64];
+    f.read_exact(&mut h).ok()?;
+    if !h.starts_with(b"\x7fELF") || h[4] != 2 || h[5] != 1 {
+        return None;
+    }
+    let phoff = u64::from_le_bytes(h[0x20..0x28].try_into().ok()?);
+    let (phentsize, phnum) = (u16::from_le_bytes([h[0x36], h[0x37]]) as u64, u16::from_le_bytes([h[0x38], h[0x39]]) as u64);
+    if phentsize < 56 || phnum > 256 {
+        return None;
+    }
+    let mut ph = vec![0u8; (phentsize * phnum) as usize];
+    f.seek(SeekFrom::Start(phoff)).ok()?;
+    f.read_exact(&mut ph).ok()?;
+    for e in ph.chunks(phentsize as usize) {
+        if u32::from_le_bytes(e[0..4].try_into().ok()?) == 3 {
+            let (off, size) = (u64::from_le_bytes(e[8..16].try_into().ok()?), u64::from_le_bytes(e[32..40].try_into().ok()?));
+            let mut b = vec![0u8; size.min(256) as usize];
+            f.seek(SeekFrom::Start(off)).ok()?;
+            f.read_exact(&mut b).ok()?;
+            return Some(String::from_utf8_lossy(&b).trim_end_matches('\0').to_string());
+        }
+    }
+    None
+}
+
+/// A program built for the other C library (glibc vs musl), or for a standard loader this system lacks.
+pub fn loader_warning(path: &Path, sys: &System) -> Option<String> {
+    let interp = elf_interp(path)?;
+    if interp.contains("ld-musl") && !sys.musl {
+        return Some("This program is built for musl libc (Alpine Linux) and will not start on this glibc system unless musl is installed.".into());
+    }
+    if interp.contains("ld-linux") && sys.musl {
+        return Some("This program is built for glibc and will not start on this musl system (Alpine) without the `gcompat` compatibility package.".into());
+    }
+    if sys.no_fhs_loader && !Path::new(&interp).exists() {
+        return Some(format!("This program needs {interp}, which this system does not have (NixOS). Turn on `programs.nix-ld.enable` in configuration.nix to run it."));
+    }
+    None
 }
 
 // ---------------------------------------------------------------- archives and source
@@ -837,17 +930,19 @@ pub fn plan_repo(source: &str, ident: &str, sys: &System) -> Plan {
             p.uninstall = Uninstall::Manager { manager: "snap".into(), ident: ident.into(), user: false };
         }
         _ => match sys.native.filter(|n| manager_name(*n) == source) {
-            Some(n) => {
-                let (prog, args) = install_pkgs(n, &[ident]);
-                p.step("Install from your distro's repositories", true, Action::Cmd { program: prog, args, cwd: None });
-                p.uninstall = Uninstall::Manager { manager: source.into(), ident: ident.into(), user: false };
-            }
+            Some(_) => match native_install(sys, &[ident]) {
+                Some((prog, args)) => {
+                    // A layered package is removed by the layering tool, not the package manager.
+                    let manager = layered(sys, &[]).map(|l| l.0).unwrap_or_else(|| source.into());
+                    p.step("Install from your distro's repositories", true, Action::Cmd { program: prog, args, cwd: None });
+                    p.uninstall = Uninstall::Manager { manager, ident: ident.into(), user: false };
+                }
+                None => p.refuse("This system's read-only base can't add packages.", &[READ_ONLY_ADVICE]),
+            },
             None => p.refuse(&format!("{source} is not this system's package manager."), &[]),
         },
     }
-    if p.supported && sys.immutable && source != "flathub" {
-        p.warnings.push("This system has a read-only base. System-wide package installs may need a reboot or may be undone by updates; Flatpak is safer.".into());
-    }
+    read_only_base(&mut p, sys);
     p
 }
 
@@ -877,6 +972,8 @@ pub fn removal(manager: &str, ident: &str, user: bool) -> Result<(String, Vec<St
         "snap" => ("snap", s(&["remove", ident]), true),
         "flatpak" => ("flatpak", s(&["uninstall", if user { "--user" } else { "--system" }, "-y", ident]), !user),
         "flatpak-remote" => ("flatpak", s(&["remote-delete", "--user", ident]), false),
+        "rpm-ostree" => ("rpm-ostree", s(&["uninstall", ident]), true),
+        "transactional-update" => ("transactional-update", s(&["--non-interactive", "pkg", "remove", ident]), true),
         other => return Err(format!("Unknown package manager: {other}")),
     };
     Ok((prog.into(), args, root))
@@ -919,7 +1016,33 @@ mod tests {
         let mut s = detect();
         s.native = native;
         s.immutable = false;
+        s.layer = None;
         s
+    }
+
+    #[test]
+    fn reads_the_loader_and_warns_across_c_libraries() {
+        let interp = elf_interp(Path::new("/bin/sh")).or_else(|| elf_interp(Path::new("/usr/bin/env")));
+        let Some(interp) = interp else { return }; // not a 64-bit little-endian host
+        let mut sys = fake(None);
+        assert_eq!(loader_warning(Path::new("/bin/sh"), &sys).is_some(), sys.musl != interp.contains("ld-musl"));
+        sys.musl = !interp.contains("ld-musl");
+        assert!(loader_warning(Path::new("/bin/sh"), &sys).is_some());
+        assert_eq!(elf_interp(Path::new("/etc/hostname")), None);
+    }
+
+    #[test]
+    fn read_only_base_layers_or_refuses() {
+        let mut sys = fake(Some(Native::Dnf));
+        sys.immutable = true;
+        sys.layer = Some("rpm-ostree".into());
+        let p = plan_repo("dnf", "vlc", &sys);
+        assert!(p.supported && p.steps[0].display.starts_with("rpm-ostree install --idempotent --apply-live vlc"), "{:?}", p.steps);
+        assert_eq!(p.uninstall, Uninstall::Manager { manager: "rpm-ostree".into(), ident: "vlc".into(), user: false });
+        assert!(removal("rpm-ostree", "vlc", false).unwrap().0 == "rpm-ostree");
+        sys.layer = None;
+        assert!(!plan_repo("dnf", "vlc", &sys).supported);
+        assert!(plan_repo("flathub", "org.a.A", &sys).supported || !has("flatpak"));
     }
 
     #[test]

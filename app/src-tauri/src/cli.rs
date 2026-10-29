@@ -118,7 +118,10 @@ fn run(args: &[String]) -> Result<i32, String> {
                 println!("Runtimes    {}", if s.runtimes.is_empty() { "none".into() } else { s.runtimes.join(", ") });
                 println!("Missing     {}", if s.missing_helpers.is_empty() { "nothing".into() } else { s.missing_helpers.join(", ") });
                 if s.immutable {
-                    println!("Read-only base system");
+                    println!("Read-only base system{}", s.layer.as_deref().map(|l| format!(", packages added with {l}")).unwrap_or_default());
+                }
+                if s.no_fhs_loader {
+                    println!("No standard glibc loader: programs from other distros need nix-ld or appimage-run");
                 }
                 if s.is_root {
                     println!("Running as root: user-scope apps go to root's home");
